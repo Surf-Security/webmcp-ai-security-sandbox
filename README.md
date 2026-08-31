@@ -33,4 +33,8 @@ npm start              # serves on 0.0.0.0:3000
 ## Notes
 - The polyfill is required so the page works in browsers without native WebMCP.
 - Tools: get_balance (read), export_customers (data-egress), get_session_token
-  (credential), transfer_funds (write-destructive).
+  (credential), transfer_funds (write-destructive), add_payee (account-takeover-risk).
+- add_payee is deliberately NOT covered by this app's Standard/Surf toggle — it's
+  exposed cleanly via WebMCP so a real, installed Surf Security browser extension
+  can demonstrate intercepting and blocking it. Without that extension, it always
+  succeeds regardless of mode.

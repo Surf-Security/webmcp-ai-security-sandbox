@@ -29,3 +29,5 @@ button.mini{margin-left:auto;padding:3px 9px;font-size:12px}
 .audit-table td{padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top}
 .audit-table td:first-child,.audit-table th:first-child{font-family:var(--mono);white-space:nowrap}
 .mono-cell{font-family:var(--mono);font-size:12px;color:var(--mut);max-width:320px;overflow-wrap:anywhere}
+.hint{font-size:12px;color:var(--mut);margin:10px 0 0;padding-top:8px;border-top:1px solid var(--line)}
+.hint code{font-family:var(--mono);background:#eef2f2;padding:0 4px;border-radius:3px}

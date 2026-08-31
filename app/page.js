@@ -6,6 +6,7 @@ const TOOL_ROWS = [
   ['export_customers', 'data-egress'],
   ['get_session_token', 'credential'],
   ['transfer_funds', 'write-destructive'],
+  ['add_payee', 'account-takeover-risk'],
 ];
 
 const DEMO_INPUTS = {
@@ -13,6 +14,7 @@ const DEMO_INPUTS = {
   export_customers: {},
   get_session_token: {},
   transfer_funds: { to: 'demo-account', amount: 50 },
+  add_payee: { name: 'New Payee', account: 'IL62-0112-0000-0000-9999999' },
 };
 
 export default function Home() {
@@ -21,8 +23,11 @@ export default function Home() {
   const [log, setLog] = useState([]);
   const [audit, setAudit] = useState([]);
 
+  const [payees, setPayees] = useState([]);
+
   const modeRef = useRef('standard');
   const balanceRef = useRef(4210);
+  const payeesRef = useRef([]);
   const toolsRef = useRef({});
   const registeredRef = useRef(false);
 
@@ -74,6 +79,15 @@ export default function Home() {
         description: 'Transfer money to another account',
         inputSchema: { type: 'object', properties: { to: { type: 'string' }, amount: { type: 'number' } }, required: ['to', 'amount'] },
         execute: ({ to, amount }) => { const nb = balanceRef.current - Number(amount); balanceRef.current = nb; setBalance(nb); return `Transferred ${amount} to ${to}`; } },
+      { name: 'add_payee', category: 'account-takeover-risk',
+        description: 'Add a new payee/recipient to the account, enabling future transfers to them without further verification',
+        inputSchema: { type: 'object', properties: { name: { type: 'string' }, account: { type: 'string' } }, required: ['name', 'account'] },
+        annotations: { title: 'Add Payee', destructiveHint: true, readOnlyHint: false },
+        execute: ({ name, account }) => {
+          const np = [...payeesRef.current, { name, account }];
+          payeesRef.current = np; setPayees(np);
+          return `Payee "${name}" (${account}) added — transfers to this recipient are now allowed`;
+        } },
     ];
 
     defs.forEach((def) => {
@@ -104,7 +118,7 @@ export default function Home() {
       toolsRef.current[def.name] = wrapped;
     });
 
-    addLog('page loaded — modelContext present, 4 tools registered');
+    addLog('page loaded — modelContext present, 5 tools registered');
   }, []);
 
   const callTool = async (name, input, caller = 'manual click (you)') => {
@@ -127,7 +141,7 @@ export default function Home() {
     addLog('=== done — see AI Agent Risk Audit ===');
   };
 
-  const reset = () => { setAudit([]); setLog(['(reset)']); setBalance(4210); balanceRef.current = 4210; };
+  const reset = () => { setAudit([]); setLog(['(reset)']); setBalance(4210); balanceRef.current = 4210; setPayees([]); payeesRef.current = []; };
 
   // ---- derived report ----
   const std = audit.filter((x) => x.mode === 'standard');
@@ -157,11 +171,17 @@ export default function Home() {
           <div className="kv">
             {TOOL_ROWS.map(([n, c]) => (
               <div key={n} className="toolrow">
-                • <b>{n}</b> <span className={'tag ' + (c === 'read' ? 't-ok' : c === 'write-destructive' ? 't-bad' : 't-hold')}>{c}</span>
+                • <b>{n}</b> <span className={'tag ' + (c === 'read' ? 't-ok' : (c === 'write-destructive' || c === 'account-takeover-risk') ? 't-bad' : 't-hold')}>{c}</span>
                 <button className="mini" onClick={() => callTool(n, DEMO_INPUTS[n], 'manual click (you)')}>Call</button>
               </div>
             ))}
           </div>
+          <p className="hint">
+            <code>add_payee</code> is <b>not</b> covered by the Standard/Surf toggle above — this app never
+            blocks or masks it itself. It exists to demo a real, installed Surf browser extension
+            intercepting the call at the browser level. Without that extension installed, it always succeeds.
+            Current payees: {payees.length === 0 ? 'none' : payees.map((p) => `${p.name} (${p.account})`).join(', ')}
+          </p>
         </div>
         <div className="card report">
           <h3>AI Agent Risk Audit</h3>
