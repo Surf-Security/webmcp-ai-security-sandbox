@@ -1,27 +1,33 @@
-:root{--bg:#f5f7f8;--card:#fff;--ink:#111;--mut:#5a6a6e;--line:#dde3e3;--surf:#0b6e75;--bad:#b23a21;--ok:#2c6e49;--hold:#8a5a0e;--mono:ui-monospace,Menlo,monospace}
+/* Palette matches Surf's existing brand (see OneLoginLite and the SurfMCP extension):
+   navy #1A3353 + blue #3E79F7, green #21B573 for success/allowed, red #FF525A for danger/blocked. */
+:root{--bg:#f4f7fc;--card:#fff;--ink:#1a3353;--text:#202124;--mut:#72849a;--line:#e6ebf1;--surf:#3e79f7;--bad:#ff525a;--ok:#21b573;--hold:#b4790a;--mono:ui-monospace,Menlo,monospace}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,Arial,sans-serif;font-size:15px;line-height:1.5;padding:22px}
-.wrap{max-width:1000px;margin:0 auto}
-h1{font-size:24px;margin:0 0 4px}
+body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:15px;line-height:1.5}
+.wrap{max-width:1000px;margin:0 auto;padding:22px}
+.brand-header{display:flex;align-items:center;gap:10px;margin-bottom:18px}
+.brand-header img{width:32px;height:32px}
+.brand-header .brand-name{font-weight:700;font-size:15px;color:var(--ink)}
+.brand-header .brand-product{color:var(--mut);font-size:13px}
+h1{font-size:22px;margin:0 0 4px;color:var(--ink)}
 .sub{color:var(--mut);margin:0 0 18px}
 .row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 @media(max-width:720px){.row{grid-template-columns:1fr}}
-.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:16px}
-.card h3{margin:0 0 8px;font-size:15px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px}
+.card h3{margin:0 0 8px;font-size:15px;color:var(--ink)}
 .modebar{display:flex;gap:10px;align-items:center;margin:0 0 16px;flex-wrap:wrap}
 .pill{font-family:var(--mono);font-size:12px;padding:3px 10px;border-radius:12px;border:1px solid var(--line)}
-button{font:inherit;padding:7px 12px;border:1px solid var(--line);border-radius:6px;background:#fff;cursor:pointer}
+button{font:inherit;padding:7px 12px;border:1px solid var(--line);border-radius:10px;background:#fff;cursor:pointer}
 button.primary{background:var(--surf);color:#fff;border-color:var(--surf)}
 button.active{outline:2px solid var(--surf)}
-pre{font-family:var(--mono);font-size:12px;background:#0d1214;color:#d6e2e2;padding:12px;border-radius:6px;overflow:auto;max-height:360px;white-space:pre-wrap}
+pre{font-family:var(--mono);font-size:12px;background:var(--ink);color:#dbe6f7;padding:12px;border-radius:10px;overflow:auto;max-height:360px;white-space:pre-wrap}
 .kv{font-family:var(--mono);font-size:13px}
 .kv b{color:var(--surf)}
 .report{border:2px solid var(--surf)}
 .stat{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding:6px 0;font-size:14px}
 .tag{font-family:var(--mono);font-size:11px;padding:1px 6px;border-radius:4px}
-.t-bad{background:#f6e3de;color:var(--bad)}
-.t-ok{background:#dfefe4;color:var(--ok)}
-.t-hold{background:#f6ebd8;color:var(--hold)}
+.t-bad{background:#ffe9ea;color:var(--bad)}
+.t-ok{background:#e3f7ee;color:var(--ok)}
+.t-hold{background:#fbf1e0;color:var(--hold)}
 .toolrow{display:flex;align-items:center;gap:8px;padding:3px 0}
 button.mini{margin-left:auto;padding:3px 9px;font-size:12px}
 .audit-table{width:100%;border-collapse:collapse;font-size:13px}
@@ -31,3 +37,9 @@ button.mini{margin-left:auto;padding:3px 9px;font-size:12px}
 .mono-cell{font-family:var(--mono);font-size:12px;color:var(--mut);max-width:320px;overflow-wrap:anywhere}
 .hint{font-size:12px;color:var(--mut);margin:10px 0 0;padding-top:8px;border-top:1px solid var(--line)}
 .hint code{font-family:var(--mono);background:#eef2f2;padding:0 4px;border-radius:3px}
+.stat-tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:10px 0}
+@media(max-width:640px){.stat-tiles{grid-template-columns:repeat(2,1fr)}}
+.stat-tile{border:1px solid var(--line);border-radius:10px;padding:10px;text-align:center}
+.stat-tile .n{font-size:22px;font-weight:700;color:var(--ink)}
+.stat-tile .l{font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.03em}
+.demo-toggle{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--mut);cursor:pointer;margin:18px 0 10px}
