@@ -1,0 +1,31 @@
+:root{--bg:#f5f7f8;--card:#fff;--ink:#111;--mut:#5a6a6e;--line:#dde3e3;--surf:#0b6e75;--bad:#b23a21;--ok:#2c6e49;--hold:#8a5a0e;--mono:ui-monospace,Menlo,monospace}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,Arial,sans-serif;font-size:15px;line-height:1.5;padding:22px}
+.wrap{max-width:1000px;margin:0 auto}
+h1{font-size:24px;margin:0 0 4px}
+.sub{color:var(--mut);margin:0 0 18px}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:720px){.row{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:16px}
+.card h3{margin:0 0 8px;font-size:15px}
+.modebar{display:flex;gap:10px;align-items:center;margin:0 0 16px;flex-wrap:wrap}
+.pill{font-family:var(--mono);font-size:12px;padding:3px 10px;border-radius:12px;border:1px solid var(--line)}
+button{font:inherit;padding:7px 12px;border:1px solid var(--line);border-radius:6px;background:#fff;cursor:pointer}
+button.primary{background:var(--surf);color:#fff;border-color:var(--surf)}
+button.active{outline:2px solid var(--surf)}
+pre{font-family:var(--mono);font-size:12px;background:#0d1214;color:#d6e2e2;padding:12px;border-radius:6px;overflow:auto;max-height:360px;white-space:pre-wrap}
+.kv{font-family:var(--mono);font-size:13px}
+.kv b{color:var(--surf)}
+.report{border:2px solid var(--surf)}
+.stat{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding:6px 0;font-size:14px}
+.tag{font-family:var(--mono);font-size:11px;padding:1px 6px;border-radius:4px}
+.t-bad{background:#f6e3de;color:var(--bad)}
+.t-ok{background:#dfefe4;color:var(--ok)}
+.t-hold{background:#f6ebd8;color:var(--hold)}
+.toolrow{display:flex;align-items:center;gap:8px;padding:3px 0}
+button.mini{margin-left:auto;padding:3px 9px;font-size:12px}
+.audit-table{width:100%;border-collapse:collapse;font-size:13px}
+.audit-table th{text-align:left;color:var(--mut);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.03em;padding:6px 8px;border-bottom:1px solid var(--line)}
+.audit-table td{padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+.audit-table td:first-child,.audit-table th:first-child{font-family:var(--mono);white-space:nowrap}
+.mono-cell{font-family:var(--mono);font-size:12px;color:var(--mut);max-width:320px;overflow-wrap:anywhere}
