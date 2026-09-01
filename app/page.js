@@ -20,15 +20,6 @@ const DEMO_INPUTS = {
 
 const DEMO_VISIBLE_STORAGE_KEY = 'surf-sandbox-demo-visible';
 
-// Only what Surf actually enforces today — no roadmap/planned items.
-const CAPABILITIES = [
-  { label: 'App & tool allowlist', blurb: 'Explicitly-denylisted tools never run.' },
-  { label: 'Policy before execute', blurb: 'Destructive/unproven calls held for approval.' },
-  { label: 'Data protection', blurb: 'PII and secrets masked in tool results.' },
-  { label: 'Full audit trail', blurb: 'Every call logged across every tab.' },
-  { label: 'Exfiltration defence', blurb: 'Masking plus blocking bulk data-egress tools.' },
-];
-
 export default function Home() {
   const [mode, setMode] = useState('standard');
   const [balance, setBalance] = useState(4210);
@@ -220,30 +211,6 @@ export default function Home() {
   const extMaskedCount = extEntries.filter((e) => e.masked).length;
   const extAllowedCount = extEntries.filter((e) => e.verdict === 'success' && !e.masked).length;
 
-  // extEntries is a global cross-tab feed, so scope lookups to this page's own origin —
-  // another tab could in principle register a same-named tool.
-  const latestEntryForTool = (name) => {
-    if (typeof window === 'undefined') return null;
-    for (let i = extEntries.length - 1; i >= 0; i -= 1) {
-      const e = extEntries[i];
-      if (e.toolName !== name) continue;
-      try {
-        if (new URL(e.tabUrl).origin !== window.location.origin) continue;
-      } catch {
-        continue;
-      }
-      return e;
-    }
-    return null;
-  };
-
-  const relativeTime = (ts) => {
-    const seconds = Math.max(0, Math.round((Date.now() - ts) / 1000));
-    if (seconds < 5) return 'just now';
-    if (seconds < 60) return `${seconds}s ago`;
-    return `${Math.round(seconds / 60)}m ago`;
-  };
-
   return (
     <div className="wrap">
       <div className="brand-header">
@@ -261,40 +228,10 @@ export default function Home() {
             {extStatus === 'installed' ? 'connected' : extStatus === 'checking' ? 'checking' : 'not installed'}
           </span>
         </h3>
-        <div className="capability-grid">
-          {CAPABILITIES.map((c) => (
-            <div key={c.label} className="capability-item">
-              <span className="tag t-ok">✓</span>
-              <div>
-                <div className="capability-label">{c.label}</div>
-                <div className="capability-blurb">{c.blurb}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-
         {extStatus === 'not-installed' && (
           <div>Install the Surf — WebMCP Security extension to see real, browser-level enforcement across every tab.</div>
         )}
-        {extStatus === 'installed' && (
-          <div className="protected-tools-list">
-            {TOOL_ROWS.map(([n]) => {
-              const entry = latestEntryForTool(n);
-              return (
-                <div key={n} className="protected-tool-row">
-                  <span className="mono-cell">{n}</span>
-                  {entry ? (
-                    <span className={'tag ' + (entry.verdict === 'blocked' || entry.verdict === 'denied' ? 't-bad' : entry.masked ? 't-hold' : 't-ok')}>
-                      {(entry.verdict === 'blocked' || entry.verdict === 'denied' ? entry.verdict : entry.masked ? 'masked' : entry.verdict) + ' · ' + relativeTime(entry.ts)}
-                    </span>
-                  ) : (
-                    <span className="tag t-planned">protected</span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
+        {extStatus === 'installed' && extEntries.length === 0 && <div>Connected — no activity yet.</div>}
         {extStatus === 'installed' && extEntries.length > 0 && (
           <>
             <div className="stat-tiles">
