@@ -7,12 +7,43 @@
  * The extension only accepts connections from origins listed in its manifest's
  * `externally_connectable.matches` (currently localhost/127.0.0.1 for dev) — update that list
  * before pointing this at a deployed domain.
+ *
+ * Chrome derives an extension's ID deterministically from the keypair that signs it — the same
+ * private key always produces the same ID, whether the extension is loaded unpacked, packed into
+ * a .crx, or uploaded to the Chrome Web Store for the first time (the Store honors an explicit
+ * manifest `key` field on first publish rather than assigning its own). So the packed/production
+ * ID only matches this dev one if packing reuses the exact same private key — a different key
+ * (e.g. one the Store auto-generates because no key was reused) produces a different ID. Rather
+ * than guess which will happen, both are supported: try the dev ID first, then an optional real
+ * prod ID once one exists, supplied via env var at deploy time (never hardcoded here) so this
+ * file doesn't need editing again once that ID is known.
  */
 
 // Computed from SurfMCP/manifest.json's `key` field — keep in sync if that key ever changes.
-export const SURF_EXTENSION_ID = 'eopkbbbmfbmdhfhenfmdpdfijcnapmcc';
+const DEV_EXTENSION_ID = 'eopkbbbmfbmdhfhenfmdpdfijcnapmcc';
 
-const PING_TIMEOUT_MS = 800;
+// Set at deploy time once the extension has a real published/packed ID, e.g.
+// NEXT_PUBLIC_SURF_EXTENSION_IDS=abcdefghijklmnopqrstuvwxyzabcdef (comma-separate for more than
+// one). Never commit a real prod ID here — this stays empty until it's supplied via environment
+// config, keeping this file deploy-target-agnostic.
+const CONFIGURED_IDS = (process.env.NEXT_PUBLIC_SURF_EXTENSION_IDS || '')
+  .split(',')
+  .map((id) => id.trim())
+  .filter(Boolean);
+
+// Dev ID first so local development never waits on a prod lookup that will only fail there;
+// de-duped in case the configured list happens to already include it.
+export const SURF_EXTENSION_IDS = [...new Set([DEV_EXTENSION_ID, ...CONFIGURED_IDS])];
+
+// Kept for any external callers still importing the old single-ID export — points at the same
+// dev ID as before, so existing behavior (and any explicit-ID override) is unaffected.
+export const SURF_EXTENSION_ID = DEV_EXTENSION_ID;
+
+// MV3 service workers go idle after inactivity and need a moment to cold-start on the next
+// message — 800ms was too tight for that, especially right after the user reloads/enables the
+// extension (exactly when they'd click "Check again"), causing a false "not installed" result
+// even though the extension is really there and just hasn't woken up yet.
+const PING_TIMEOUT_MS = 2500;
 
 function getChromeRuntime() {
   if (typeof window === 'undefined') return null;
@@ -20,8 +51,53 @@ function getChromeRuntime() {
   return rt && typeof rt.sendMessage === 'function' ? rt : null;
 }
 
-/** Resolves { installed: boolean, version?, reason? } — never throws. */
-export function pingSurfExtension(extensionId = SURF_EXTENSION_ID, timeoutMs = PING_TIMEOUT_MS) {
+const AUDIT_HISTORY_TIMEOUT_MS = 5000;
+
+/**
+ * One-shot query against the extension's durable (chrome.storage.local, 7-day retention) audit
+ * history — SURF_GET_AUDIT_HISTORY, added alongside shared/audit-history.ts. This is distinct
+ * from connectToSurfExtension's live push feed below: that one only sees new events from the
+ * moment it connects, while this can look back across tab closes/navigations/browser restarts,
+ * up to the extension's retention window. Resolves { ok: true, data: AuditLogEntry[] } or
+ * { ok: false, error }, never throws.
+ */
+export function getAuditHistory({ from, to } = {}, extensionId = SURF_EXTENSION_ID, timeoutMs = AUDIT_HISTORY_TIMEOUT_MS) {
+  return new Promise((resolve) => {
+    const runtime = getChromeRuntime();
+    if (!runtime) {
+      resolve({ ok: false, error: 'no-extension-api' });
+      return;
+    }
+
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      resolve({ ok: false, error: 'timeout' });
+    }, timeoutMs);
+
+    try {
+      runtime.sendMessage(extensionId, { type: 'SURF_GET_AUDIT_HISTORY', from, to }, (response) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        if (runtime.lastError || !response || !response.ok) {
+          resolve({ ok: false, error: runtime.lastError?.message || response?.error || 'no-response' });
+          return;
+        }
+        resolve({ ok: true, data: response.data });
+      });
+    } catch (err) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve({ ok: false, error: String(err?.message || err) });
+    }
+  });
+}
+
+/** One attempt against a single specific ID. Resolves { installed, version?, reason? }. */
+function pingOnce(extensionId, timeoutMs) {
   return new Promise((resolve) => {
     const runtime = getChromeRuntime();
     if (!runtime) {
@@ -45,7 +121,11 @@ export function pingSurfExtension(extensionId = SURF_EXTENSION_ID, timeoutMs = P
           resolve({ installed: false, reason: runtime.lastError?.message || 'no-response' });
           return;
         }
-        resolve({ installed: true, version: response.data?.version });
+        // response.data.protectionEnabled is only sent by extension builds that know about it
+        // (see service-worker.ts's SURF_PING handler) — treat a missing field as "unknown, assume
+        // protected" rather than as "off", so an older installed build doesn't get flagged as
+        // unprotected just because it predates this check.
+        resolve({ installed: true, version: response.data?.version, protectionEnabled: response.data?.protectionEnabled !== false });
       });
     } catch (err) {
       if (settled) return;
@@ -54,6 +134,25 @@ export function pingSurfExtension(extensionId = SURF_EXTENSION_ID, timeoutMs = P
       resolve({ installed: false, reason: String(err?.message || err) });
     }
   });
+}
+
+/**
+ * Tries each candidate ID in SURF_EXTENSION_IDS in turn (dev ID first), resolving as soon as one
+ * responds — so this keeps working whether the installed extension is the dev-key build or a
+ * differently-keyed packed/published one, without knowing in advance which. The successful id is
+ * returned so callers needing a specific ID afterward (connectToSurfExtension, getAuditHistory)
+ * use the one that's actually live, not a guess. Resolves { installed, version?, extensionId?,
+ * reason? } — never throws. Pass an explicit `extensionIds` array to override the candidate list
+ * (e.g. to test one ID directly) rather than the configured default.
+ */
+export async function pingSurfExtension(timeoutMs = PING_TIMEOUT_MS, extensionIds = SURF_EXTENSION_IDS) {
+  let lastReason = 'no-extension-api';
+  for (const id of extensionIds) {
+    const result = await pingOnce(id, timeoutMs);
+    if (result.installed) return { ...result, extensionId: id };
+    lastReason = result.reason;
+  }
+  return { installed: false, reason: lastReason };
 }
 
 const HEARTBEAT_INTERVAL_MS = 20_000;

@@ -2,7 +2,7 @@ import './globals.css';
 import Script from 'next/script';
 
 export const metadata = {
-  title: 'WebMCP AI Security Sandbox',
+  title: 'Surf Agent Control',
   description: 'See what an AI agent can do to a page that exposes WebMCP tools — with and without Surf.',
 };
 

@@ -1,6 +1,23 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 /* Palette matches Surf's existing brand (see OneLoginLite and the SurfMCP extension):
    navy #1A3353 + blue #3E79F7, green #21B573 for success/allowed, red #FF525A for danger/blocked. */
-:root{--bg:#f4f7fc;--card:#fff;--ink:#1a3353;--text:#202124;--mut:#72849a;--line:#e6ebf1;--surf:#3e79f7;--bad:#ff525a;--ok:#21b573;--hold:#b4790a;--mono:ui-monospace,Menlo,monospace}
+:root{--bg:#f4f7fc;--card:#fff;--ink:#1a3353;--text:#202124;--mut:#72849a;--line:#e6ebf1;--surf:#3e79f7;--bad:#ff525a;--ok:#21b573;--hold:#b4790a;--masked:#2f6fed;--mono:ui-monospace,Menlo,monospace}
+
+/* Dark-mode cascade for the new dashboard shell ONLY — mirrors the SurfMCP extension popup's
+   exact pattern (system default, explicit override wins in both directions via a `data-theme`
+   attribute), but deliberately scoped to descendants of [data-surf-shell] rather than :root.
+   The legacy single-page demo (app/page.js) and dev test sites (app/tests/*) render outside that
+   wrapper, so they keep the plain light tokens above regardless of OS theme or the dashboard's
+   own theme choice — this app predates dark-mode support and must not silently reskin. */
+[data-surf-shell]{--bg:#f4f7fc;--card:#fff;--ink:#1a3353;--text:#202124;--mut:#72849a;--line:#e6ebf1;--surf:#3e79f7;--bad:#ff525a;--ok:#21b573;--hold:#b4790a;--masked:#2f6fed;--bad-bg:#ffedee;--ok-bg:#e3f7ee;--hold-bg:#fbf1e0;--masked-bg:#eaf0ff}
+@media (prefers-color-scheme: dark){
+  html:not([data-theme='light']) [data-surf-shell]{--bg:#0e1b2e;--card:#152947;--ink:#edf1f9;--text:#edf1f9;--mut:#a9bad4;--line:#2c4c78;--surf:#6c9bf7;--bad:#ff8a90;--ok:#4fd49b;--hold:#f0b45c;--masked:#7fa8ff;--bad-bg:#3a1a1a;--ok-bg:#113626;--hold-bg:#3a2c11;--masked-bg:#1c2f52}
+}
+html[data-theme='dark'] [data-surf-shell]{--bg:#0e1b2e;--card:#152947;--ink:#edf1f9;--text:#edf1f9;--mut:#a9bad4;--line:#2c4c78;--surf:#6c9bf7;--bad:#ff8a90;--ok:#4fd49b;--hold:#f0b45c;--masked:#7fa8ff;--bad-bg:#3a1a1a;--ok-bg:#113626;--hold-bg:#3a2c11;--masked-bg:#1c2f52}
+
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:15px;line-height:1.5}
 .wrap{max-width:1000px;margin:0 auto;padding:22px}
@@ -8,7 +25,7 @@ body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,B
 .brand-header img{width:32px;height:32px}
 .brand-header .brand-name{font-weight:700;font-size:15px;color:var(--ink)}
 .brand-header .brand-product{color:var(--mut);font-size:13px}
-h1{font-size:22px;margin:0 0 4px;color:var(--ink)}
+.wrap h1{font-size:22px;margin:0 0 4px;color:var(--ink)}
 .sub{color:var(--mut);margin:0 0 18px}
 .row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 @media(max-width:720px){.row{grid-template-columns:1fr}}
@@ -16,10 +33,10 @@ h1{font-size:22px;margin:0 0 4px;color:var(--ink)}
 .card h3{margin:0 0 8px;font-size:15px;color:var(--ink)}
 .modebar{display:flex;gap:10px;align-items:center;margin:0 0 16px;flex-wrap:wrap}
 .pill{font-family:var(--mono);font-size:12px;padding:3px 10px;border-radius:12px;border:1px solid var(--line)}
-button{font:inherit;padding:7px 12px;border:1px solid var(--line);border-radius:10px;background:#fff;cursor:pointer}
-button.primary{background:var(--surf);color:#fff;border-color:var(--surf)}
-button.active{outline:2px solid var(--surf)}
-pre{font-family:var(--mono);font-size:12px;background:var(--ink);color:#dbe6f7;padding:12px;border-radius:10px;overflow:auto;max-height:360px;white-space:pre-wrap}
+.wrap button{font:inherit;padding:7px 12px;border:1px solid var(--line);border-radius:10px;background:#fff;cursor:pointer}
+.wrap button.primary{background:var(--surf);color:#fff;border-color:var(--surf)}
+.wrap button.active{outline:2px solid var(--surf)}
+.wrap pre{font-family:var(--mono);font-size:12px;background:var(--ink);color:#dbe6f7;padding:12px;border-radius:10px;overflow:auto;max-height:360px;white-space:pre-wrap}
 .kv{font-family:var(--mono);font-size:13px}
 .kv b{color:var(--surf)}
 .report{border:2px solid var(--surf)}
@@ -28,8 +45,9 @@ pre{font-family:var(--mono);font-size:12px;background:var(--ink);color:#dbe6f7;p
 .t-bad{background:#ffe9ea;color:var(--bad)}
 .t-ok{background:#e3f7ee;color:var(--ok)}
 .t-hold{background:#fbf1e0;color:var(--hold)}
+.t-masked{background:#eaf0ff;color:var(--masked)}
 .toolrow{display:flex;align-items:center;gap:8px;padding:3px 0}
-button.mini{margin-left:auto;padding:3px 9px;font-size:12px}
+.wrap button.mini{margin-left:auto;padding:3px 9px;font-size:12px}
 .audit-table{width:100%;border-collapse:collapse;font-size:13px}
 .audit-table th{text-align:left;color:var(--mut);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.03em;padding:6px 8px;border-bottom:1px solid var(--line)}
 .audit-table td{padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top}
