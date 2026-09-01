@@ -24,7 +24,7 @@ export default function TestHeader({ title, description }) {
         </div>
       </div>
       <p className="sub" style={{ marginTop: -10 }}>
-        <Link href="/tests">All test sites</Link> · <Link href="/">Main sandbox</Link>
+        <Link href="/tests">All test sites</Link> · <Link href="/">Dashboard</Link>
         {' · '}
         <span className={'tag ' + (extStatus === 'installed' ? 't-ok' : extStatus === 'checking' ? 't-hold' : 't-bad')}>
           extension: {extStatus === 'installed' ? 'connected' : extStatus === 'checking' ? 'checking' : 'not installed'}
