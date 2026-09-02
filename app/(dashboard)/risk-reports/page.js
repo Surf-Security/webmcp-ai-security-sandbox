@@ -1,11 +1,50 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { FileBarChart2, Layers } from 'lucide-react';
+import { FileBarChart2, Layers, FileText, FileSpreadsheet, FileJson } from 'lucide-react';
 import Badge from '../../components/ui/Badge';
 import EmptyState from '../../components/ui/EmptyState';
 import { listRiskReports, generateCombinedReport } from '../../lib/riskReports';
 import { formatDateTime } from '../../lib/formatDate';
 import { downloadFile } from '../../lib/download';
+import { reportToCsv, exportReportAsPdf } from '../../lib/reportExport';
+
+const RISK_TEXT_CLASS = { Critical: 'text-bad', High: 'text-hold', Medium: 'text-masked', Low: 'text-ok' };
+
+function EventTable({ events }) {
+  if (!events || events.length === 0) {
+    return <p className="mt-3 border-t border-line pt-3 text-xs text-mut">No per-step event data was captured for this report.</p>;
+  }
+  return (
+    <div className="mt-3 overflow-x-auto border-t border-line pt-3">
+      <table className="w-full min-w-[640px] text-left text-xs">
+        <thead>
+          <tr className="text-mut">
+            <th className="pb-1.5 pr-3 font-medium uppercase tracking-wide">Step</th>
+            <th className="pb-1.5 pr-3 font-medium uppercase tracking-wide">Tool</th>
+            <th className="pb-1.5 pr-3 font-medium uppercase tracking-wide">Risk</th>
+            <th className="pb-1.5 pr-3 font-medium uppercase tracking-wide">Surf action</th>
+            <th className="pb-1.5 pr-3 font-medium uppercase tracking-wide">Decision</th>
+            <th className="pb-1.5 pr-3 font-medium uppercase tracking-wide">Executed</th>
+            <th className="pb-1.5 font-medium uppercase tracking-wide">Result</th>
+          </tr>
+        </thead>
+        <tbody>
+          {events.map((e) => (
+            <tr key={e.step} className="border-t border-line/60">
+              <td className="py-1.5 pr-3 align-top text-mut">{e.step}</td>
+              <td className="py-1.5 pr-3 align-top font-mono text-ink">{e.tool}</td>
+              <td className={`py-1.5 pr-3 align-top font-semibold ${RISK_TEXT_CLASS[e.riskLevel] || 'text-mut'}`}>{e.riskLevel}</td>
+              <td className="py-1.5 pr-3 align-top text-ink">{e.surfAction.replace(/_/g, ' ')}</td>
+              <td className="py-1.5 pr-3 align-top text-ink">{e.userDecision}</td>
+              <td className="py-1.5 pr-3 align-top text-ink">{e.executed}</td>
+              <td className="py-1.5 align-top text-mut">{e.resultSummary}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 export default function RiskReportsPage() {
   const [reports, setReports] = useState([]);
@@ -53,25 +92,20 @@ export default function RiskReportsPage() {
               <div key={r.id} className="rounded-lg border border-line bg-card p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <div className="text-sm font-semibold text-ink">{r.title}</div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold text-ink">{r.title}</span>
+                      <span className="font-mono text-[11px] text-mut">{r.reportId}</span>
+                    </div>
                     <div className="mt-0.5 text-xs text-mut">{formatDateTime(r.createdAt)}</div>
-                    <p className="mt-2 text-sm text-ink">{r.summary}</p>
+                    {r.agentTask && <p className="mt-2 text-xs italic text-mut">&ldquo;{r.agentTask}&rdquo;</p>}
+                    <p className="mt-1 text-sm text-ink">{r.summary}</p>
                   </div>
                   <Badge variant={r.verdictVariant}>{r.verdictLabel}</Badge>
                 </div>
 
-                {expanded && (
-                  <ul className="mt-3 space-y-1.5 border-t border-line pt-3 text-xs">
-                    {r.stats.map((s) => (
-                      <li key={s.label} className="flex items-center justify-between gap-2">
-                        <span className="text-mut">{s.label}</span>
-                        <span className="font-medium text-ink">{s.value}</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
+                {expanded && <EventTable events={r.events} />}
 
-                <div className="mt-3 flex gap-2 border-t border-line pt-3">
+                <div className="mt-3 flex flex-wrap gap-2 border-t border-line pt-3">
                   <button
                     onClick={() => setExpandedId(expanded ? null : r.id)}
                     className="rounded-lg border border-line px-3 py-1.5 text-xs font-medium text-ink hover:bg-bg"
@@ -79,10 +113,22 @@ export default function RiskReportsPage() {
                     {expanded ? 'Hide details' : 'View'}
                   </button>
                   <button
-                    onClick={() => downloadFile(`${r.suiteId}-report-${r.id}.json`, JSON.stringify(r, null, 2), 'application/json')}
-                    className="rounded-lg border border-line px-3 py-1.5 text-xs font-medium text-ink hover:bg-bg"
+                    onClick={() => downloadFile(`${r.reportId}.csv`, reportToCsv(r), 'text/csv')}
+                    className="flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-xs font-medium text-ink hover:bg-bg"
                   >
-                    Export
+                    <FileSpreadsheet size={13} /> Export CSV
+                  </button>
+                  <button
+                    onClick={() => exportReportAsPdf(r)}
+                    className="flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-xs font-medium text-ink hover:bg-bg"
+                  >
+                    <FileText size={13} /> Export PDF
+                  </button>
+                  <button
+                    onClick={() => downloadFile(`${r.reportId}.json`, JSON.stringify(r, null, 2), 'application/json')}
+                    className="flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-xs font-medium text-ink hover:bg-bg"
+                  >
+                    <FileJson size={13} /> Export JSON
                   </button>
                 </div>
               </div>

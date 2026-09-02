@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronUp, ChevronDown } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -55,10 +55,23 @@ export default function DataTable({
 
   useEffect(() => setPage(0), [searchQuery, filterFn]);
   useEffect(() => setRevealCount(pageSize), [searchQuery, filterFn]);
+
+  // Belt-and-suspenders against an unstable `rows`/`filterFn`/`searchKeys` reference from a
+  // caller (an inline array/object literal recreated every render, say): comparing shallowly
+  // before calling onVisibleRowsChange means even a same-content-but-new-reference `sorted` won't
+  // trigger the parent's setState — a real instance of this fed back into an infinite render loop
+  // (Audit Trail passed a fresh `searchKeys` array literal every render, which fed this effect,
+  // which called setState, which re-rendered the page, which built a new array — forever), which
+  // is bad enough on its own to guard against here rather than trust every future caller to memoize.
+  const lastEmittedRef = useRef(null);
   useEffect(() => {
-    onVisibleRowsChange?.(sorted);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sorted]);
+    if (!onVisibleRowsChange) return;
+    const prev = lastEmittedRef.current;
+    const same = prev && prev.length === sorted.length && prev.every((r, i) => r === sorted[i]);
+    if (same) return;
+    lastEmittedRef.current = sorted;
+    onVisibleRowsChange(sorted);
+  }, [sorted, onVisibleRowsChange]);
 
   const toggleSort = (key) => {
     setSort((prev) => {

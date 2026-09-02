@@ -195,6 +195,99 @@ function computeResult(suite, state) {
   return { label, variant, summary, stats, outcome };
 }
 
+/** Real risk classification derived from a tool's own annotations — a destructive tool is always
+ * Critical (attempting one is inherently high-stakes regardless of outcome), a mutating but
+ * non-destructive tool is High, and a read-only tool is Low unless it actually exposed sensitive
+ * data (masked), which bumps it to Medium. Not fabricated per-call — the same tool always gets
+ * the same base classification, since it's a property of the tool, not of one specific run. */
+function classifyRisk(toolName, { masked = false } = {}) {
+  const tool = TOOLS.find((t) => t.name === toolName);
+  const a = tool?.annotations || {};
+  if (a.destructiveHint) return 'Critical';
+  if (a.readOnlyHint) return masked ? 'Medium' : 'Low';
+  return 'High';
+}
+
+function toolType(toolName) {
+  const a = TOOLS.find((t) => t.name === toolName)?.annotations || {};
+  if (a.destructiveHint) return 'write-destructive';
+  if (a.readOnlyHint) return 'read';
+  return 'write';
+}
+
+/** A plain "key: value; key: value" rendering of the real args this call sent — our own demo
+ * inputs are already synthetic/non-sensitive, so showing them as-is is honest; nothing here
+ * pretends to mask something Surf didn't actually mask. */
+function summarizeArgs(args) {
+  if (!args || typeof args !== 'object' || Object.keys(args).length === 0) return '—';
+  return Object.entries(args)
+    .map(([k, v]) => `${k}: ${v}`)
+    .join('; ');
+}
+
+/**
+ * One real event row per actual tool call a test made — the single source of truth for both the
+ * on-screen report and the CSV/PDF/JSON exports, built entirely from what the test itself
+ * produced (DEMO_INPUTS for what was sent, computeResult/steps for what happened). A multi-step
+ * suite like Risky Action yields one row per step; every other suite yields exactly one.
+ */
+function buildReportEvents(suite, state, result) {
+  if (suite.id === 'risky-action') {
+    const steps = state.steps || [];
+    return steps.map((s, i) => {
+      const success = s.status === 'success';
+      return {
+        step: i + 1,
+        tool: s.tool,
+        toolType: toolType(s.tool),
+        riskLevel: classifyRisk(s.tool),
+        surfAction: 'approval_required',
+        userDecision: success ? 'approved' : s.status === 'denied' ? 'denied' : s.status,
+        executed: success ? 'Yes' : 'No',
+        inputSummary: summarizeArgs(DEMO_INPUTS[s.tool]),
+        resultSummary: success
+          ? s.tool === 'add_payee'
+            ? `${s.result?.name} added (${s.result?.account})`
+            : `Transferred ${s.result?.amount} to ${s.result?.to}`
+          : s.message || s.error || 'Not executed',
+        sensitiveValuesMasked: 0,
+        ts: s.ts || state.completedAt,
+      };
+    });
+  }
+
+  const outcome = result?.outcome || { status: state.error ? 'error' : 'success' };
+  const isSensitive = suite.id === 'sensitive-data';
+  const success = outcome.status === 'success';
+  let sensitiveValuesMasked = 0;
+  if (isSensitive && success) {
+    const record = Array.isArray(state.result) ? state.result[0] : undefined;
+    sensitiveValuesMasked = SENSITIVE_FIELDS.filter((f) => isMaskedValue(record?.[f.key])).length;
+  }
+  return [
+    {
+      step: 1,
+      tool: suite.toolName,
+      toolType: toolType(suite.toolName),
+      riskLevel: classifyRisk(suite.toolName, { masked: sensitiveValuesMasked > 0 }),
+      surfAction:
+        outcome.status === 'blocked'
+          ? 'blocked'
+          : outcome.status === 'denied'
+            ? 'approval_required'
+            : isSensitive && sensitiveValuesMasked > 0
+              ? 'masked'
+              : 'allowed',
+      userDecision: outcome.status === 'denied' ? 'denied' : suite.approvalRequired ? 'approved' : 'n/a',
+      executed: success ? 'Yes' : 'No',
+      inputSummary: summarizeArgs(DEMO_INPUTS[suite.toolName]),
+      resultSummary: result?.summary || (state.error ? `Error: ${state.error}` : 'No result'),
+      sensitiveValuesMasked,
+      ts: state.completedAt,
+    },
+  ];
+}
+
 function FieldTable({ record, mode }) {
   return (
     <table className="w-full table-fixed border-collapse text-xs">
@@ -751,7 +844,7 @@ export default function SecurityTestPage() {
         ...prev,
         'risky-action': {
           loading: false,
-          steps: [{ tool: RISKY_ACTION_TOOLS[0], status: 'error', error: String(err?.message || err) }],
+          steps: [{ tool: RISKY_ACTION_TOOLS[0], status: 'error', error: String(err?.message || err), ts: Date.now() }],
           completedAt: Date.now(),
         },
       }));
@@ -770,11 +863,12 @@ export default function SecurityTestPage() {
           status: blocked ? (result.error === 'DENIED_BY_SURF' ? 'denied' : 'blocked') : 'success',
           result,
           message: blocked ? result.message : undefined,
+          ts: Date.now(),
         };
         setCallState((prev) => ({ ...prev, 'risky-action': { loading: true, steps: [...steps] } }));
         if (blocked) break;
       } catch (err) {
-        steps[steps.length - 1] = { tool: toolName, status: 'error', error: String(err?.message || err) };
+        steps[steps.length - 1] = { tool: toolName, status: 'error', error: String(err?.message || err), ts: Date.now() };
         break;
       }
     }
@@ -794,10 +888,14 @@ export default function SecurityTestPage() {
       saveRiskReport({
         suiteId: suite.id,
         title: `${suite.title} Report`,
+        agentTask: suite.agentTask,
+        caller: 'Security Test',
+        origin: typeof window !== 'undefined' ? window.location.origin : '',
         verdictLabel: result.label,
         verdictVariant: result.variant,
         summary: result.summary,
         stats: result.stats,
+        events: buildReportEvents(suite, state, result),
       });
       setSavedReportFor(stateKey);
     };
@@ -873,9 +971,15 @@ export default function SecurityTestPage() {
 
   return (
     <div className="space-y-5 p-6">
-      <div>
-        <h1 className="text-xl font-semibold text-ink">Security Test</h1>
-        <p className="mt-1 text-sm text-mut">Run focused WebMCP security tests and see exactly how Surf responds.</p>
+      <div className="flex items-start gap-3">
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-line bg-card text-surf">
+          <ShieldCheck size={20} />
+        </span>
+        <div>
+          <h1 className="text-xl font-semibold text-ink">Security Test</h1>
+          <p className="mt-1 text-sm text-mut">Run focused WebMCP security tests to see how Surf protects what matters.</p>
+          <p className="text-sm text-mut">Then inspect results in Live Activity, Audit Trail, and Risk Reports.</p>
+        </div>
       </div>
 
       {!apiPresent && (

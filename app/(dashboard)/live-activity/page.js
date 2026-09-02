@@ -41,6 +41,11 @@ const COLUMNS = [
   { key: 'detail', label: 'Details', render: (r) => <ExpandableDetail value={r.detail} className="text-sm text-mut" /> },
 ];
 
+// A stable module-scope reference, not a fresh array literal inline in the DataTable prop below —
+// see the same constant in audit-trail/page.js for why an unstable one is a real hazard, not just
+// a style nit.
+const SEARCH_KEYS = ['toolName', 'domainTab', 'caller'];
+
 export default function LiveActivityPage() {
   const { status, entries } = useExtensionConnection();
   const [filter, setFilter] = useState('all');
@@ -112,7 +117,7 @@ export default function LiveActivityPage() {
             columns={COLUMNS}
             rows={rows}
             searchQuery={query}
-            searchKeys={['toolName', 'domainTab', 'caller']}
+            searchKeys={SEARCH_KEYS}
             filterFn={filterFn}
             pageSize={10}
             initialSort={{ key: 'ts', dir: 'desc' }}

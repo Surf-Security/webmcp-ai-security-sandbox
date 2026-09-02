@@ -1,10 +1,28 @@
 'use client';
-import { AlertTriangle, Loader2, ShieldOff } from 'lucide-react';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import { AlertTriangle, Loader2, ShieldOff, Activity, ArrowRight } from 'lucide-react';
 import { useExtensionConnection } from '../../lib/useExtensionConnection';
 import { useTopBarSlot } from '../../lib/topBarSlot';
 import { SURF_EXTENSION_ID } from '../../surfClient';
 
 const WEBSTORE_URL = `https://chromewebstore.google.com/detail/${SURF_EXTENSION_ID}`;
+
+/** Shortcut to Live Activity — shown only on the Security Test home screen, not on every page. */
+function LiveActivityShortcut() {
+  const pathname = usePathname();
+  if (pathname !== '/security-test' && pathname !== '/') return null;
+  return (
+    <Link
+      href="/live-activity"
+      className="flex shrink-0 items-center gap-1.5 rounded-lg border border-surf bg-card px-3 py-1.5 text-sm font-medium text-surf hover:bg-bg"
+    >
+      <Activity size={14} />
+      Go to Live Activity
+      <ArrowRight size={14} />
+    </Link>
+  );
+}
 
 /**
  * Rendered once by AppShell, above every page's content, so connection status is consistent
@@ -37,9 +55,12 @@ export default function TopStatusBar() {
             <div className="text-sm text-mut">Surf protection is turned off for this site, so calls here run unguarded.</div>
           </div>
         </div>
-        <button onClick={recheck} className="shrink-0 rounded-lg border border-line bg-card px-3 py-1.5 text-sm font-medium text-ink hover:bg-bg">
-          Check again
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          <button onClick={recheck} className="rounded-lg border border-line bg-card px-3 py-1.5 text-sm font-medium text-ink hover:bg-bg">
+            Check again
+          </button>
+          <LiveActivityShortcut />
+        </div>
       </div>
     );
   }
@@ -57,26 +78,32 @@ export default function TopStatusBar() {
             <div className="text-sm text-mut">{subtitle || 'Receiving live events'}</div>
           </div>
         </div>
-        {actionLabel && (
-          <button
-            onClick={onAction}
-            className="flex shrink-0 items-center gap-1.5 rounded-lg border border-surf bg-card px-3 py-1.5 text-sm font-medium text-surf hover:bg-bg"
-          >
-            {ActionIcon && <ActionIcon size={14} />}
-            {actionLabel}
-          </button>
-        )}
+        <div className="flex shrink-0 items-center gap-2">
+          {actionLabel && (
+            <button
+              onClick={onAction}
+              className="flex items-center gap-1.5 rounded-lg border border-surf bg-card px-3 py-1.5 text-sm font-medium text-surf hover:bg-bg"
+            >
+              {ActionIcon && <ActionIcon size={14} />}
+              {actionLabel}
+            </button>
+          )}
+          <LiveActivityShortcut />
+        </div>
       </div>
     );
   }
 
   if (status === 'checking') {
     return (
-      <div className="flex items-center gap-3 border-b border-line bg-card px-6 py-4">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-black/5">
-          <Loader2 size={16} className="animate-spin text-hold" />
-        </span>
-        <div className="text-base font-semibold text-ink">Checking for the Surf extension…</div>
+      <div className="flex items-center justify-between gap-4 border-b border-line bg-card px-6 py-4">
+        <div className="flex items-center gap-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-black/5">
+            <Loader2 size={16} className="animate-spin text-hold" />
+          </span>
+          <div className="text-base font-semibold text-ink">Checking for the Surf extension…</div>
+        </div>
+        <LiveActivityShortcut />
       </div>
     );
   }
@@ -109,6 +136,7 @@ export default function TopStatusBar() {
         >
           Install / Load extension
         </a>
+        <LiveActivityShortcut />
       </div>
     </div>
   );

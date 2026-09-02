@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { FlaskConical, Activity, ScrollText, FileBarChart2, PanelLeftClose, PanelLeftOpen, ArrowRight } from 'lucide-react';
+import { FlaskConical, Activity, ScrollText, FileBarChart2, PanelLeftClose, PanelLeftOpen, ArrowRight, ShieldCheck } from 'lucide-react';
 import NavItem from './NavItem';
 import SidebarFooter from './SidebarFooter';
 
@@ -70,16 +70,21 @@ export default function Sidebar({ collapsed, onToggleCollapse, connection }) {
       </nav>
 
       <div className="mt-auto flex flex-col gap-3">
-        <Link
-          href="/audit-trail"
-          className="flex items-center justify-between gap-2 rounded-lg bg-white/5 p-3 text-left hover:bg-white/10"
-        >
-          <div>
-            <div className="text-sm font-semibold text-white">AI Agent Risk Audit</div>
-            <div className="text-xs text-slate-400">Generate a shareable risk audit report.</div>
+        <div className="rounded-lg border border-white/10 bg-white/5 p-4">
+          <div className="flex items-center gap-2">
+            <ShieldCheck size={16} className="shrink-0 text-blue-300" />
+            <div className="text-sm font-semibold text-white">Protect your organization</div>
           </div>
-          <ArrowRight size={16} className="shrink-0 text-slate-400" />
-        </Link>
+          <p className="mt-2 text-xs text-slate-400">Bring Surf&apos;s agent security controls across your organization.</p>
+          <a
+            href="https://www.surf.security/contactus"
+            target="_blank"
+            rel="noreferrer"
+            className="mt-3 flex items-center justify-center gap-1.5 rounded-lg bg-surf px-3 py-2 text-xs font-semibold text-white hover:opacity-90"
+          >
+            Start Surf Security Trial <ArrowRight size={13} />
+          </a>
+        </div>
 
         <SidebarFooter version={connection.version} />
       </div>

@@ -50,6 +50,13 @@ const COLUMNS = [
 
 const DECISION_OPTIONS = ['all', 'allowed', 'blocked', 'masked'];
 
+// A stable module-scope reference — a fresh array literal here (as this used to be, inline in the
+// DataTable prop below) gets a new identity every render, defeating DataTable's own memoization
+// and, worse, retriggering its onVisibleRowsChange effect every single render: that effect calls
+// setVisibleRows, which re-renders this page, which creates a new array again — an infinite loop
+// that pegs the CPU and makes the whole page (including sidebar nav clicks) appear to hang.
+const SEARCH_KEYS = ['toolName', 'domainTab', 'caller'];
+
 export default function AuditTrailPage() {
   const { status, extensionId } = useExtensionConnection();
   const [query, setQuery] = useState('');
@@ -180,7 +187,7 @@ export default function AuditTrailPage() {
                 columns={COLUMNS}
                 rows={rows}
                 searchQuery={query}
-                searchKeys={['toolName', 'domainTab', 'caller']}
+                searchKeys={SEARCH_KEYS}
                 filterFn={filterFn}
                 pageSize={10}
                 initialSort={{ key: 'ts', dir: 'desc' }}
