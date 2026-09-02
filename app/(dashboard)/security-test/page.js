@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
   ShieldCheck,
@@ -20,9 +20,10 @@ import {
   Monitor,
   Activity,
 } from 'lucide-react';
-import Badge from '../../components/ui/Badge';
+import Badge, { VARIANT_CLASSES, TEXT_CLASSES } from '../../components/ui/Badge';
 import { useExtensionConnection } from '../../lib/useExtensionConnection';
 import { saveRiskReport, listRiskReports } from '../../lib/riskReports';
+import { formatDateTime, formatTime } from '../../lib/formatDate';
 import { TOOLS, DEMO_INPUTS, SAMPLE_CUSTOMERS, SAMPLE_ACCOUNT, SENSITIVE_FIELDS, TEST_SUITES } from '../../lib/scenarios';
 
 const HOW_IT_WORKS_STEPS = [
@@ -39,16 +40,8 @@ const RESULT_LEGEND = [
   { icon: Ban, label: 'Blocked', description: 'Action blocked by Surf policy.', variant: 'blocked' },
 ];
 
-const LEGEND_CLASSES = {
-  allowed: 'bg-ok-bg text-ok',
-  masked: 'bg-masked-bg text-masked',
-  held: 'bg-hold-bg text-hold',
-  blocked: 'bg-bad-bg text-bad',
-};
-
-function formatReportDate(ts) {
-  return new Date(ts).toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
-}
+// Reused by ResultPanel below so the outcome icon is defined in exactly one place.
+const ICON_BY_VARIANT = Object.fromEntries(RESULT_LEGEND.map((r) => [r.variant, r.icon]));
 
 /** Newest report per suite only, so the same suite run twice doesn't crowd out the others here —
  * the full (undeduped) history is still one click away on the Risk Reports page. */
@@ -89,10 +82,6 @@ function isMaskedValue(value) {
 
 function formatMoney(amount, currency) {
   return `${Number(amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`;
-}
-
-function formatTime(ts) {
-  return new Date(ts).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
 /** Real per-call outcome, read off the actual guard return value — never inferred/guessed. */
@@ -165,10 +154,22 @@ function computeResult(suite, state) {
   let summary = `${suite.toolName} ran with no interruption.`;
   const stats = [];
 
+  // Block/deny/error must win regardless of which suite this is — checked first, before any
+  // suite-specific success-path logic, so a blocked or denied Sensitive Data call (say, a custom
+  // per-tool block on export_customers) can never fall into the masking branch below and get
+  // reported as ALLOWED just because isSensitive happened to be checked first.
   if (outcome.status === 'error') {
     label = 'ERROR';
     variant = 'neutral';
     summary = "Surf (or the browser's WebMCP bridge) couldn't be reached — see the error for details.";
+  } else if (outcome.status === 'denied') {
+    label = 'DENIED';
+    variant = 'blocked';
+    summary = outcome.message || 'This action was not approved.';
+  } else if (outcome.status === 'blocked') {
+    label = 'BLOCKED';
+    variant = 'blocked';
+    summary = outcome.message || 'Surf prevented this tool from executing.';
   } else if (isSensitive) {
     const record = Array.isArray(state.result) ? state.result[0] : undefined;
     const foundCount = SENSITIVE_FIELDS.length;
@@ -178,14 +179,6 @@ function computeResult(suite, state) {
     summary = `Surf masked ${maskedCount} of ${foundCount} sensitive value${foundCount === 1 ? '' : 's'} before they reached the agent.`;
     stats.push({ label: 'Sensitive values found', value: String(foundCount) });
     stats.push({ label: 'Sensitive values masked', value: String(maskedCount) });
-  } else if (outcome.status === 'denied') {
-    label = 'DENIED';
-    variant = 'blocked';
-    summary = outcome.message || 'This action was not approved.';
-  } else if (outcome.status === 'blocked') {
-    label = 'BLOCKED';
-    variant = 'blocked';
-    summary = outcome.message || 'Surf prevented this tool from executing.';
   } else if (suite.id === 'safe-read') {
     summary = 'This safe read action was allowed with no interruption.';
   }
@@ -354,10 +347,14 @@ function BaselinePanel({ suite }) {
   );
 }
 
-function LiveContent({ suite, state, extensionInstalled, protectionEnabled, onRun }) {
+function LiveContent({ suite, state, extensionInstalled, protectionEnabled, apiPresent, onRun }) {
   const hasRun = state.result !== undefined || !!state.error;
   const result = computeResult(suite, state);
-  const canRun = extensionInstalled && protectionEnabled;
+  // apiPresent means this page's own tool registration actually finished — without it, a click
+  // could race a genuinely-installed, genuinely-protected extension against a tool that isn't
+  // callable yet, surfacing as a raw "Tool not registered" error or (worse) a half-registered
+  // call returning a malformed result.
+  const canRun = extensionInstalled && protectionEnabled && apiPresent;
 
   if (!hasRun) {
     return (
@@ -373,6 +370,9 @@ function LiveContent({ suite, state, extensionInstalled, protectionEnabled, onRu
         {!extensionInstalled && <p className="mt-2 text-xs text-bad">Connect the Surf extension to run this test live.</p>}
         {extensionInstalled && !protectionEnabled && (
           <p className="mt-2 text-xs text-bad">Protection is off for this site — turn it on in the Surf popup.</p>
+        )}
+        {extensionInstalled && protectionEnabled && !apiPresent && (
+          <p className="mt-2 text-xs text-mut">Preparing this test's tools — one moment…</p>
         )}
         {state.loading && suite.approvalRequired && <p className="mt-2 text-xs text-mut">Check the in-page approval prompt to continue.</p>}
         {suite.note && <p className="mt-3 text-xs text-mut">{suite.note}</p>}
@@ -440,7 +440,7 @@ function LiveContent({ suite, state, extensionInstalled, protectionEnabled, onRu
   );
 }
 
-function LivePanel({ suite, state, extensionInstalled, protectionEnabled, onRun }) {
+function LivePanel({ suite, state, extensionInstalled, protectionEnabled, apiPresent, onRun }) {
   const hasRun = state.result !== undefined || !!state.error;
   const result = hasRun ? computeResult(suite, state) : null;
 
@@ -476,7 +476,7 @@ function LivePanel({ suite, state, extensionInstalled, protectionEnabled, onRun 
 
   return (
     <PanelShell tone={tone} header="With Surf Protection" subtitle={subtitle} pill={pill}>
-      <LiveContent suite={suite} state={state} extensionInstalled={extensionInstalled} protectionEnabled={protectionEnabled} onRun={onRun} />
+      <LiveContent suite={suite} state={state} extensionInstalled={extensionInstalled} protectionEnabled={protectionEnabled} apiPresent={apiPresent} onRun={onRun} />
     </PanelShell>
   );
 }
@@ -488,10 +488,10 @@ function LivePanel({ suite, state, extensionInstalled, protectionEnabled, onRun 
  * content/policy-bridge.ts) — this page has no channel to fabricate that decision itself, so a
  * pending step just says to check it there and waits on the same promise the extension resolves.
  */
-function RiskyActionLive({ state, extensionInstalled, protectionEnabled, onRun }) {
+function RiskyActionLive({ state, extensionInstalled, protectionEnabled, apiPresent, onRun }) {
   const steps = state.steps || [];
   const result = computeResult({ id: 'risky-action' }, state);
-  const canRun = extensionInstalled && protectionEnabled;
+  const canRun = extensionInstalled && protectionEnabled && apiPresent;
   const transferStep = steps.find((s) => s.tool === 'transfer_funds');
 
   let tone = 'ok';
@@ -558,6 +558,9 @@ function RiskyActionLive({ state, extensionInstalled, protectionEnabled, onRun }
           {extensionInstalled && !protectionEnabled && (
             <p className="mt-2 text-xs text-bad">Protection is off for this site — turn it on in the Surf popup.</p>
           )}
+          {extensionInstalled && protectionEnabled && !apiPresent && (
+            <p className="mt-2 text-xs text-mut">Preparing this test's tools — one moment…</p>
+          )}
         </>
       ) : (
         <>
@@ -572,13 +575,11 @@ function RiskyActionLive({ state, extensionInstalled, protectionEnabled, onRun }
               {transferStep?.status === 'success' ? (
                 <Row
                   label="Balance"
-                  value={`${formatMoney(SAMPLE_ACCOUNT.balance, SAMPLE_ACCOUNT.currency)} → ${formatMoney(transferStep.result.newBalance, SAMPLE_ACCOUNT.currency)}`}
+                  value={`${formatMoney(transferStep.result.previousBalance, SAMPLE_ACCOUNT.currency)} → ${formatMoney(transferStep.result.newBalance, SAMPLE_ACCOUNT.currency)}`}
                   valueClassName="text-ok font-semibold"
                 />
               ) : (
-                <p className="text-xs font-semibold text-bad">
-                  No funds transferred. Final balance: {formatMoney(SAMPLE_ACCOUNT.balance, SAMPLE_ACCOUNT.currency)}
-                </p>
+                <p className="text-xs font-semibold text-bad">No funds transferred.</p>
               )}
               <button onClick={onRun} className="mt-3 text-xs font-medium text-surf hover:underline">
                 Run again
@@ -602,7 +603,7 @@ function ResultPanel({ suite, state, onGenerateReport, reportSaved }) {
     );
   }
 
-  const Icon = { allowed: CheckCircle2, masked: EyeOff, blocked: Ban, neutral: AlertTriangle }[result.variant] || CheckCircle2;
+  const Icon = ICON_BY_VARIANT[result.variant] || AlertTriangle;
 
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-line bg-card p-4">
@@ -642,25 +643,24 @@ function ResultPanel({ suite, state, onGenerateReport, reportSaved }) {
 export default function SecurityTestPage() {
   const { status, protectionEnabled } = useExtensionConnection();
   const extensionInstalled = status === 'installed';
-  const canRunProtected = extensionInstalled && protectionEnabled;
   const [apiPresent, setApiPresent] = useState(false);
+  const canRunProtected = extensionInstalled && protectionEnabled && apiPresent;
   const [callState, setCallState] = useState({}); // toolName -> { loading, result, error }
   const [selectedId, setSelectedId] = useState(null); // null = grid view
   const [savedReportFor, setSavedReportFor] = useState(null); // toolName last saved, to disable re-save
   const [reports, setReports] = useState([]);
-  const registeredRef = useRef(false);
 
   useEffect(() => {
     setReports(listRiskReports());
   }, [savedReportFor]);
 
   useEffect(() => {
-    if (registeredRef.current) return;
-    const mc = (typeof navigator !== 'undefined' && navigator.modelContext) ||
-               (typeof document !== 'undefined' && document.modelContext);
-    if (!mc) return;
-    registeredRef.current = true;
-    setApiPresent(true);
+    // Deliberately no "already ran" ref guard here — the effect is idempotent (registerTool
+    // rejections for an already-registered name are caught below), so it's safe for React
+    // StrictMode's dev-mode mount→cleanup→remount to run it twice. A guard ref combined with a
+    // `cancelled` flag set on cleanup would instead cancel the *only* real attempt on the first
+    // synthetic unmount and never register anything in dev.
+    let cancelled = false;
 
     const balanceRef = { current: SAMPLE_ACCOUNT.balance };
     const execByName = {
@@ -668,21 +668,49 @@ export default function SecurityTestPage() {
       export_customers: () => SAMPLE_CUSTOMERS,
       add_payee: ({ name, account }) => ({ name, account }),
       transfer_funds: ({ to, amount, description }) => {
+        const previousBalance = balanceRef.current;
         balanceRef.current -= Number(amount);
-        return { to, amount: Number(amount), description: description || 'Uncategorized transfer', newBalance: balanceRef.current };
+        return { to, amount: Number(amount), description: description || 'Uncategorized transfer', previousBalance, newBalance: balanceRef.current };
       },
       delete_account: ({ customer_id }) => ({ customer_id, deleted: true }),
     };
 
-    TOOLS.forEach(({ name, description, inputSchema, annotations }) => {
-      mc.registerTool({
-        name,
-        description,
-        inputSchema,
-        annotations,
-        execute: (input) => execByName[name](input),
-      });
-    });
+    // The polyfill script (or the browser's own native modelContext) can still be a beat behind
+    // React hydration on a genuinely fresh load — a single synchronous check-and-bail here used
+    // to silently register nothing at all if it lost that race, leaving the Run button armed
+    // (its own disabled check never looked at apiPresent) against a tool that was never actually
+    // registered. Poll briefly instead, the same resilience pattern surfClient.js already uses
+    // for the extension ping.
+    const getMc = () =>
+      (typeof navigator !== 'undefined' && navigator.modelContext) ||
+      (typeof document !== 'undefined' && document.modelContext);
+
+    (async () => {
+      let mc = getMc();
+      for (let attempt = 0; !mc && attempt < 20 && !cancelled; attempt++) {
+        await new Promise((r) => setTimeout(r, 150));
+        mc = getMc();
+      }
+      if (!mc || cancelled) return;
+
+      // Each registerTool() call is async and was previously fired without awaiting — under load
+      // (or a hot-reload re-running this effect) that let "tool not registered yet" races surface
+      // as a real, user-visible error on the very first call. Awaiting them, and tolerating
+      // "already registered" specifically (a harmless re-registration attempt), makes apiPresent
+      // an honest signal that every tool is actually callable by the time it flips true.
+      for (const { name, description, inputSchema, annotations } of TOOLS) {
+        try {
+          await mc.registerTool({ name, description, inputSchema, annotations, execute: (input) => execByName[name](input) });
+        } catch (err) {
+          if (!String(err?.message || err).includes('already registered')) throw err;
+        }
+      }
+      if (!cancelled) setApiPresent(true);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const callTool = async (name) => {
@@ -713,8 +741,22 @@ export default function SecurityTestPage() {
     if (!canRunProtected) return;
     setSavedReportFor(null);
     setCallState((prev) => ({ ...prev, 'risky-action': { loading: true, steps: [] } }));
-    const mc = navigator.modelContext || document.modelContext;
-    const tools = await mc.getTools();
+    let mc;
+    let tools;
+    try {
+      mc = navigator.modelContext || document.modelContext;
+      tools = await mc.getTools();
+    } catch (err) {
+      setCallState((prev) => ({
+        ...prev,
+        'risky-action': {
+          loading: false,
+          steps: [{ tool: RISKY_ACTION_TOOLS[0], status: 'error', error: String(err?.message || err) }],
+          completedAt: Date.now(),
+        },
+      }));
+      return;
+    }
     const steps = [];
     for (const toolName of RISKY_ACTION_TOOLS) {
       steps.push({ tool: toolName, status: 'pending' });
@@ -800,9 +842,16 @@ export default function SecurityTestPage() {
           <div className="relative grid grid-cols-1 gap-4 sm:grid-cols-2">
             <BaselinePanel suite={suite} />
             {suite.id === 'risky-action' ? (
-              <RiskyActionLive state={state} extensionInstalled={extensionInstalled} protectionEnabled={protectionEnabled} onRun={runRiskyActionWorkflow} />
+              <RiskyActionLive state={state} extensionInstalled={extensionInstalled} protectionEnabled={protectionEnabled} apiPresent={apiPresent} onRun={runRiskyActionWorkflow} />
             ) : (
-              <LivePanel suite={suite} state={state} extensionInstalled={extensionInstalled} protectionEnabled={protectionEnabled} onRun={() => callTool(suite.toolName)} />
+              <LivePanel
+                suite={suite}
+                state={state}
+                extensionInstalled={extensionInstalled}
+                protectionEnabled={protectionEnabled}
+                apiPresent={apiPresent}
+                onRun={() => callTool(suite.toolName)}
+              />
             )}
             <div className="pointer-events-none absolute left-1/2 top-1/2 hidden -translate-x-1/2 -translate-y-1/2 sm:flex">
               <span className="z-10 flex h-8 w-8 items-center justify-center rounded-full border border-line bg-card text-[10px] font-semibold text-mut shadow-sm">
@@ -899,11 +948,11 @@ export default function SecurityTestPage() {
           <div className="mt-4 space-y-1">
             {RESULT_LEGEND.map((r) => (
               <div key={r.label} className="flex items-start gap-3 rounded-lg p-1.5">
-                <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${LEGEND_CLASSES[r.variant]}`}>
+                <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${VARIANT_CLASSES[r.variant]}`}>
                   <r.icon size={15} />
                 </span>
                 <div>
-                  <div className={`text-xs font-bold uppercase tracking-wide ${LEGEND_CLASSES[r.variant].split(' ')[1]}`}>{r.label}</div>
+                  <div className={`text-xs font-bold uppercase tracking-wide ${TEXT_CLASSES[r.variant]}`}>{r.label}</div>
                   <p className="text-xs text-mut">{r.description}</p>
                 </div>
               </div>
@@ -911,7 +960,10 @@ export default function SecurityTestPage() {
           </div>
         </div>
 
-        <div className="flex h-fit flex-col self-start rounded-xl bg-gradient-to-br from-ink to-surf p-6 text-white">
+        {/* Fixed brand navy-to-blue gradient, not the theme-reactive ink/surf tokens — those flip
+            to light colors in dark mode (ink becomes near-white text-on-dark), which would wash
+            this card out to near-invisible instead of the intended dark gradient in both themes. */}
+        <div className="flex h-fit flex-col self-start rounded-xl bg-gradient-to-br from-[#1a3353] to-[#3e79f7] p-6 text-white">
           <div className="flex items-center gap-3">
             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/15">
               <Activity size={20} />
@@ -925,7 +977,7 @@ export default function SecurityTestPage() {
           <p className="mt-3 text-sm text-white/80">Real-time WebMCP calls captured by the extension, across every protected tab.</p>
           <Link
             href="/live-activity"
-            className="mt-4 flex items-center justify-center gap-1.5 rounded-lg bg-white px-3 py-2 text-sm font-semibold text-ink hover:opacity-90"
+            className="mt-4 flex items-center justify-center gap-1.5 rounded-lg bg-white px-3 py-2 text-sm font-semibold text-[#1a3353] hover:opacity-90"
           >
             Go to Live Activity <ArrowRight size={14} />
           </Link>
@@ -968,7 +1020,7 @@ export default function SecurityTestPage() {
                         <span className="truncate text-sm font-semibold text-ink">{r.title}</span>
                         {suite && <Badge variant="neutral">{suite.testLabel}</Badge>}
                       </div>
-                      <div className="text-xs text-mut">{formatReportDate(r.createdAt)}</div>
+                      <div className="text-xs text-mut">{formatDateTime(r.createdAt)}</div>
                     </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">

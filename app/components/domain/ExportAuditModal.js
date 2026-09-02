@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { Download } from 'lucide-react';
 import Modal from '../ui/Modal';
+import { downloadFile } from '../../lib/download';
 
 const FIELD_OPTIONS = [
   { key: 'toolName', label: 'Tool name & type' },
@@ -21,16 +22,6 @@ function toCsv(rows, fields) {
   return `${header}\n${body}`;
 }
 
-function download(filename, content, mime) {
-  const blob = new Blob([content], { type: mime });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
 export default function ExportAuditModal({ open, onClose, rows }) {
   const [format, setFormat] = useState('csv');
   const [fields, setFields] = useState(FIELD_OPTIONS.map((f) => f.key));
@@ -42,9 +33,9 @@ export default function ExportAuditModal({ open, onClose, rows }) {
   const handleDownload = () => {
     const picked = fields.length ? fields : FIELD_OPTIONS.map((f) => f.key);
     if (format === 'json') {
-      download('surf-audit-export.json', JSON.stringify(rows.map((r) => Object.fromEntries(picked.map((f) => [f, r[f]]))), null, 2), 'application/json');
+      downloadFile('surf-audit-export.json', JSON.stringify(rows.map((r) => Object.fromEntries(picked.map((f) => [f, r[f]]))), null, 2), 'application/json');
     } else {
-      download('surf-audit-export.csv', toCsv(rows, picked), 'text/csv');
+      downloadFile('surf-audit-export.csv', toCsv(rows, picked), 'text/csv');
     }
     onClose();
   };

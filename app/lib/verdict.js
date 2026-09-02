@@ -13,6 +13,7 @@ export function describeVerdict(entry) {
   if (!entry) return { variant: 'allowed', label: 'Allowed' };
   if (entry.verdict === 'blocked') return { variant: 'blocked', label: 'Blocked' };
   if (entry.verdict === 'denied') return { variant: 'blocked', label: 'Blocked' };
+  if (entry.verdict === 'error') return { variant: 'neutral', label: 'Error' };
   if (entry.masked) return { variant: 'masked', label: 'Masked' };
   return { variant: 'allowed', label: 'Allowed' };
 }
@@ -35,7 +36,7 @@ export function riskBadgeVariant(risk) {
  */
 export function inferRiskLevel(entry) {
   if (!entry) return 'low';
-  if (entry.verdict === 'blocked' || entry.verdict === 'denied') return 'high';
+  if (entry.verdict === 'blocked' || entry.verdict === 'denied' || entry.verdict === 'error') return 'high';
   if (entry.masked) return 'medium';
   return 'low';
 }

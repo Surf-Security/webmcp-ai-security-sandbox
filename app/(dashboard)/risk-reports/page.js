@@ -4,20 +4,8 @@ import { FileBarChart2, Layers } from 'lucide-react';
 import Badge from '../../components/ui/Badge';
 import EmptyState from '../../components/ui/EmptyState';
 import { listRiskReports, generateCombinedReport } from '../../lib/riskReports';
-
-function formatDate(ts) {
-  return new Date(ts).toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
-}
-
-function downloadJson(filename, data) {
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
+import { formatDateTime } from '../../lib/formatDate';
+import { downloadFile } from '../../lib/download';
 
 export default function RiskReportsPage() {
   const [reports, setReports] = useState([]);
@@ -66,7 +54,7 @@ export default function RiskReportsPage() {
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <div className="text-sm font-semibold text-ink">{r.title}</div>
-                    <div className="mt-0.5 text-xs text-mut">{formatDate(r.createdAt)}</div>
+                    <div className="mt-0.5 text-xs text-mut">{formatDateTime(r.createdAt)}</div>
                     <p className="mt-2 text-sm text-ink">{r.summary}</p>
                   </div>
                   <Badge variant={r.verdictVariant}>{r.verdictLabel}</Badge>
@@ -91,7 +79,7 @@ export default function RiskReportsPage() {
                     {expanded ? 'Hide details' : 'View'}
                   </button>
                   <button
-                    onClick={() => downloadJson(`${r.suiteId}-report-${r.id}.json`, r)}
+                    onClick={() => downloadFile(`${r.suiteId}-report-${r.id}.json`, JSON.stringify(r, null, 2), 'application/json')}
                     className="rounded-lg border border-line px-3 py-1.5 text-xs font-medium text-ink hover:bg-bg"
                   >
                     Export

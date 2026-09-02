@@ -1,5 +1,6 @@
 'use client';
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { safeGet, safeSet } from './safeStorage';
 
 // Separate from the SurfMCP extension's own 'surfTheme' chrome.storage key — this is a plain web
 // app using localStorage, a different storage mechanism entirely, so there's no collision risk,
@@ -38,23 +39,13 @@ export function ThemeProvider({ children }) {
   const [theme, setThemeState] = useState(DEFAULT_THEME);
 
   useEffect(() => {
-    let stored = DEFAULT_THEME;
-    try {
-      stored = window.localStorage.getItem(THEME_STORAGE_KEY) || DEFAULT_THEME;
-    } catch {
-      // localStorage unavailable (private mode, etc.) — fall back to the default above
-    }
-    setThemeState(stored);
+    setThemeState(safeGet(THEME_STORAGE_KEY) || DEFAULT_THEME);
   }, []);
 
   const setTheme = (next) => {
     setThemeState(next);
     applyThemeAttribute(next);
-    try {
-      window.localStorage.setItem(THEME_STORAGE_KEY, next);
-    } catch {
-      // best-effort; theme still applies for this session even if it can't persist
-    }
+    safeSet(THEME_STORAGE_KEY, next); // best-effort; theme still applies this session either way
   };
 
   const value = useMemo(() => ({ theme, setTheme }), [theme]);

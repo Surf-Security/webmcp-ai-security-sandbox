@@ -10,17 +10,45 @@ import StatTileGroup from '../../components/ui/StatTileGroup';
 import EmptyState from '../../components/ui/EmptyState';
 import ExportAuditModal from '../../components/domain/ExportAuditModal';
 import ExpandableDetail from '../../components/ui/ExpandableDetail';
-import { describeVerdict, riskBadgeVariant, inferRiskLevel } from '../../lib/verdict';
+import { describeVerdict, riskBadgeVariant, inferRiskLevel, RISK_LEVELS } from '../../lib/verdict';
 import { formatRelativeTime } from '../../lib/formatRelativeTime';
 import { useExtensionConnection } from '../../lib/useExtensionConnection';
 import { useTopBarActions } from '../../lib/topBarSlot';
 import { getAuditHistory } from '../../surfClient';
 
 const RETENTION_DAYS = 7;
+const RISK_RANK = Object.fromEntries(RISK_LEVELS.map((level, i) => [level, i]));
 
+// Local calendar date, not toISOString's UTC date — using the UTC day here and later re-parsing
+// it as a local-time day boundary (see fetchHistory) would shift the default range by a day for
+// any timezone ahead of UTC (e.g. just after local midnight, toISOString still reads yesterday).
 function toDateInputValue(ts) {
-  return new Date(ts).toISOString().slice(0, 10);
+  const d = new Date(ts);
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
 }
+
+// Columns don't depend on props/state, so this is a stable, module-scope reference — passing a
+// freshly-built array to DataTable every render would be another unstable identity for no reason.
+const COLUMNS = [
+  { key: 'ts', label: 'Time', sortable: true, render: (r) => <span className="whitespace-nowrap font-mono text-xs text-mut">{formatRelativeTime(r.ts)}</span> },
+  { key: 'domainTab', label: 'Domain / Tab', render: (r) => <span className="text-xs text-mut">{r.domainTab}</span> },
+  { key: 'toolName', label: 'Tool', sortable: true, render: (r) => <span className="font-mono text-xs text-ink">{r.toolName}</span> },
+  { key: 'caller', label: 'Agent', render: (r) => <span className="text-xs text-ink">{r.caller}</span> },
+  { key: 'verdict', label: 'Decision', render: (r) => <Badge variant={r.verdictInfo.variant}>{r.verdictInfo.label}</Badge> },
+  {
+    key: 'risk',
+    label: 'Risk',
+    sortable: true,
+    sortValue: (r) => RISK_RANK[r.risk] ?? -1,
+    render: (r) => <Badge variant={riskBadgeVariant(r.risk)}>{r.risk}</Badge>,
+  },
+  { key: 'detail', label: 'Details', render: (r) => <ExpandableDetail value={r.detail} /> },
+];
+
+const DECISION_OPTIONS = ['all', 'allowed', 'blocked', 'masked'];
 
 export default function AuditTrailPage() {
   const { status, extensionId } = useExtensionConnection();
@@ -29,6 +57,7 @@ export default function AuditTrailPage() {
   const [decisionFilter, setDecisionFilter] = useState('all');
   const [agentFilter, setAgentFilter] = useState('all');
   const [exportOpen, setExportOpen] = useState(false);
+  const [visibleRows, setVisibleRows] = useState([]);
 
   useTopBarActions({ subtitle: 'Events captured', actionLabel: 'Export', actionIcon: Download, onAction: () => setExportOpen(true) });
 
@@ -73,31 +102,30 @@ export default function AuditTrailPage() {
     [entries],
   );
 
-  const tabOptions = ['all', ...new Set(rows.map((r) => r.domainTab))];
-  const agentOptions = ['all', ...new Set(rows.map((r) => r.caller))];
-  const decisionOptions = ['all', 'allowed', 'blocked', 'masked'];
+  const { tabOptions, agentOptions, summary } = useMemo(
+    () => ({
+      tabOptions: ['all', ...new Set(rows.map((r) => r.domainTab))],
+      agentOptions: ['all', ...new Set(rows.map((r) => r.caller))],
+      summary: {
+        total: rows.length,
+        blocked: rows.filter((r) => r.verdictInfo.variant === 'blocked').length,
+        masked: rows.filter((r) => r.verdictInfo.variant === 'masked').length,
+        allowed: rows.filter((r) => r.verdictInfo.variant === 'allowed').length,
+      },
+    }),
+    [rows],
+  );
 
-  const filterFn = (r) =>
-    (tabFilter === 'all' || r.domainTab === tabFilter) &&
-    (decisionFilter === 'all' || r.verdictInfo.variant === decisionFilter) &&
-    (agentFilter === 'all' || r.caller === agentFilter);
-
-  const columns = [
-    { key: 'ts', label: 'Time', sortable: true, render: (r) => <span className="whitespace-nowrap font-mono text-xs text-mut">{formatRelativeTime(r.ts)}</span> },
-    { key: 'domainTab', label: 'Domain / Tab', render: (r) => <span className="text-xs text-mut">{r.domainTab}</span> },
-    { key: 'toolName', label: 'Tool', sortable: true, render: (r) => <span className="font-mono text-xs text-ink">{r.toolName}</span> },
-    { key: 'caller', label: 'Agent', render: (r) => <span className="text-xs text-ink">{r.caller}</span> },
-    { key: 'verdict', label: 'Decision', render: (r) => <Badge variant={r.verdictInfo.variant}>{r.verdictInfo.label}</Badge> },
-    { key: 'risk', label: 'Risk', sortable: true, render: (r) => <Badge variant={riskBadgeVariant(r.risk)}>{r.risk}</Badge> },
-    { key: 'detail', label: 'Details', render: (r) => <ExpandableDetail value={r.detail} /> },
-  ];
-
-  const summary = {
-    total: rows.length,
-    blocked: rows.filter((r) => r.verdictInfo.variant === 'blocked').length,
-    masked: rows.filter((r) => r.verdictInfo.variant === 'masked').length,
-    allowed: rows.filter((r) => r.verdictInfo.variant === 'allowed').length,
-  };
+  // Memoized so its identity only changes when a filter criterion actually changes — DataTable's
+  // internal filtering memo (and its pagination-reset effect) depend on this reference staying
+  // stable across unrelated re-renders.
+  const filterFn = useCallback(
+    (r) =>
+      (tabFilter === 'all' || r.domainTab === tabFilter) &&
+      (decisionFilter === 'all' || r.verdictInfo.variant === decisionFilter) &&
+      (agentFilter === 'all' || r.caller === agentFilter),
+    [tabFilter, decisionFilter, agentFilter],
+  );
 
   return (
     <div className="space-y-4 p-6">
@@ -117,7 +145,7 @@ export default function AuditTrailPage() {
               label="Decision"
               value={decisionFilter}
               onChange={setDecisionFilter}
-              options={decisionOptions.map((d) => ({ value: d, label: d === 'all' ? 'All Decisions' : d[0].toUpperCase() + d.slice(1) }))}
+              options={DECISION_OPTIONS.map((d) => ({ value: d, label: d === 'all' ? 'All Decisions' : d[0].toUpperCase() + d.slice(1) }))}
             />
             <Dropdown label="Agent" value={agentFilter} onChange={setAgentFilter} options={agentOptions.map((a) => ({ value: a, label: a === 'all' ? 'All Agents' : a }))} />
             <SearchInput value={query} onChange={setQuery} placeholder="Search tools, domains, agents…" />
@@ -149,7 +177,7 @@ export default function AuditTrailPage() {
                 ]}
               />
               <DataTable
-                columns={columns}
+                columns={COLUMNS}
                 rows={rows}
                 searchQuery={query}
                 searchKeys={['toolName', 'domainTab', 'caller']}
@@ -157,13 +185,14 @@ export default function AuditTrailPage() {
                 pageSize={10}
                 initialSort={{ key: 'ts', dir: 'desc' }}
                 pagination="numbered"
+                onVisibleRowsChange={setVisibleRows}
               />
             </>
           )}
         </>
       )}
 
-      <ExportAuditModal open={exportOpen} onClose={() => setExportOpen(false)} rows={rows} />
+      <ExportAuditModal open={exportOpen} onClose={() => setExportOpen(false)} rows={visibleRows} />
     </div>
   );
 }

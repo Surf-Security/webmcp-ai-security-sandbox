@@ -6,26 +6,19 @@
  * populated. Being localStorage-backed (not a database) is an honest limitation worth stating
  * plainly wherever reports are shown: they live in this browser only.
  */
+import { safeGetJSON, safeSetJSON } from './safeStorage';
+
 const STORAGE_KEY = 'surf-risk-reports';
 const MAX_REPORTS = 50;
 
 function readAll() {
   if (typeof window === 'undefined') return [];
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+  const parsed = safeGetJSON(STORAGE_KEY, []);
+  return Array.isArray(parsed) ? parsed : [];
 }
 
 function writeAll(reports) {
-  try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(reports.slice(0, MAX_REPORTS)));
-  } catch {
-    // best-effort only — a full/blocked localStorage just means this report isn't persisted
-  }
+  safeSetJSON(STORAGE_KEY, reports.slice(0, MAX_REPORTS));
 }
 
 export function listRiskReports() {

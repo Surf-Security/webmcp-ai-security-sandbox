@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import Sidebar from './Sidebar';
 import TopStatusBar from './TopStatusBar';
 import { useExtensionConnection } from '../../lib/useExtensionConnection';
+import { safeGet, safeSet } from '../../lib/safeStorage';
 
 const COLLAPSED_STORAGE_KEY = 'surf-dashboard-sidebar-collapsed';
 
@@ -11,21 +12,13 @@ export default function AppShell({ children }) {
   const connection = useExtensionConnection();
 
   useEffect(() => {
-    try {
-      setCollapsed(window.localStorage.getItem(COLLAPSED_STORAGE_KEY) === 'true');
-    } catch {
-      // localStorage unavailable — default (expanded) stands
-    }
+    setCollapsed(safeGet(COLLAPSED_STORAGE_KEY) === 'true');
   }, []);
 
   const toggleCollapsed = () => {
     setCollapsed((prev) => {
       const next = !prev;
-      try {
-        window.localStorage.setItem(COLLAPSED_STORAGE_KEY, String(next));
-      } catch {
-        // best-effort persistence only
-      }
+      safeSet(COLLAPSED_STORAGE_KEY, String(next)); // best-effort persistence only
       return next;
     });
   };

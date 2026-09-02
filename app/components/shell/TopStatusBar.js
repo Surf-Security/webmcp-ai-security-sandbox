@@ -1,10 +1,10 @@
 'use client';
-import { AlertTriangle, Loader2 } from 'lucide-react';
+import { AlertTriangle, Loader2, ShieldOff } from 'lucide-react';
 import { useExtensionConnection } from '../../lib/useExtensionConnection';
 import { useTopBarSlot } from '../../lib/topBarSlot';
+import { SURF_EXTENSION_ID } from '../../surfClient';
 
-const EXTENSION_ID = 'eopkbbbmfbmdhfhenfmdpdfijcnapmcc';
-const WEBSTORE_URL = `https://chromewebstore.google.com/detail/${EXTENSION_ID}`;
+const WEBSTORE_URL = `https://chromewebstore.google.com/detail/${SURF_EXTENSION_ID}`;
 
 /**
  * Rendered once by AppShell, above every page's content, so connection status is consistent
@@ -14,10 +14,35 @@ const WEBSTORE_URL = `https://chromewebstore.google.com/detail/${EXTENSION_ID}`;
  * mockup exactly — not an inline dash-separated line. Subtitle text and an optional right-aligned
  * action (e.g. Audit Trail's "Export" button lives in this same row, not the page body below)
  * come from useTopBarActions() so each page can customize this shared bar without duplicating it.
+ *
+ * Connected-but-unprotected gets its own distinct state rather than folding into "connected": a
+ * page can be reachable and answering pings while the extension's own per-origin toggle has
+ * protection turned off, in which case every call anywhere in the app runs completely unguarded.
+ * Showing the plain green "connected" banner in that case is exactly the misleading, honest-
+ * looking-but-not-real result this app has otherwise gone out of its way to avoid.
  */
 export default function TopStatusBar() {
-  const { status, recheck } = useExtensionConnection();
+  const { status, protectionEnabled, recheck } = useExtensionConnection();
   const { subtitle, actionLabel, actionIcon: ActionIcon, onAction } = useTopBarSlot();
+
+  if (status === 'installed' && !protectionEnabled) {
+    return (
+      <div className="flex items-center justify-between gap-4 border-b border-line bg-card px-6 py-4">
+        <div className="flex items-center gap-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-hold-bg">
+            <ShieldOff size={16} className="text-hold" />
+          </span>
+          <div>
+            <div className="text-base font-semibold text-hold">Extension connected — protection off</div>
+            <div className="text-sm text-mut">Surf protection is turned off for this site, so calls here run unguarded.</div>
+          </div>
+        </div>
+        <button onClick={recheck} className="shrink-0 rounded-lg border border-line bg-card px-3 py-1.5 text-sm font-medium text-ink hover:bg-bg">
+          Check again
+        </button>
+      </div>
+    );
+  }
 
   if (status === 'installed') {
     return (

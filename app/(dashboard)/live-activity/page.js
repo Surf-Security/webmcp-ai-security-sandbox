@@ -1,5 +1,5 @@
 'use client';
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Radio } from 'lucide-react';
 import Badge from '../../components/ui/Badge';
 import FilterChips from '../../components/ui/FilterChips';
@@ -19,6 +19,26 @@ const FILTERS = [
   { key: 'allowed', label: 'Allowed', variant: 'allowed' },
   { key: 'blocked', label: 'Blocked', variant: 'blocked' },
   { key: 'masked', label: 'Masked', variant: 'masked' },
+];
+
+// Columns don't depend on props/state — a stable module-scope reference instead of rebuilding
+// this array (with fresh render closures) on every render.
+const COLUMNS = [
+  { key: 'ts', label: 'Time', sortable: true, render: (r) => <span className="whitespace-nowrap font-mono text-xs text-mut">{formatRelativeTime(r.ts)}</span> },
+  { key: 'toolName', label: 'Tool', sortable: true, render: (r) => <span className="font-mono text-sm text-ink">{r.toolName}</span> },
+  {
+    key: 'domainTab',
+    label: 'Domain / Tab',
+    render: (r) => (
+      <div>
+        <div className="text-sm text-ink">{r.domain}</div>
+        {r.path && <div className="text-xs text-mut">{r.path}</div>}
+      </div>
+    ),
+  },
+  { key: 'caller', label: 'Agent', render: (r) => <span className="text-sm text-ink">{r.caller}</span> },
+  { key: 'verdict', label: 'Decision', render: (r) => <Badge variant={r.verdictInfo.variant}>{r.verdictInfo.label}</Badge> },
+  { key: 'detail', label: 'Details', render: (r) => <ExpandableDetail value={r.detail} className="text-sm text-mut" /> },
 ];
 
 export default function LiveActivityPage() {
@@ -47,29 +67,19 @@ export default function LiveActivityPage() {
     [entries],
   );
 
-  const columns = [
-    { key: 'ts', label: 'Time', sortable: true, render: (r) => <span className="whitespace-nowrap font-mono text-xs text-mut">{formatRelativeTime(r.ts)}</span> },
-    { key: 'toolName', label: 'Tool', sortable: true, render: (r) => <span className="font-mono text-sm text-ink">{r.toolName}</span> },
-    {
-      key: 'domainTab',
-      label: 'Domain / Tab',
-      render: (r) => (
-        <div>
-          <div className="text-sm text-ink">{r.domain}</div>
-          {r.path && <div className="text-xs text-mut">{r.path}</div>}
-        </div>
-      ),
-    },
-    { key: 'caller', label: 'Agent', render: (r) => <span className="text-sm text-ink">{r.caller}</span> },
-    { key: 'verdict', label: 'Decision', render: (r) => <Badge variant={r.verdictInfo.variant}>{r.verdictInfo.label}</Badge> },
-    { key: 'detail', label: 'Details', render: (r) => <ExpandableDetail value={r.detail} className="text-sm text-mut" /> },
-  ];
+  // Memoized so DataTable's internal filtering memo and pagination-reset effect only react to an
+  // actual filter change, not to every unrelated re-render (e.g. a new live event streaming in
+  // elsewhere, which updates the shared connection context and re-renders this page).
+  const filterFn = useCallback((row) => filter === 'all' || row.verdictInfo.variant === filter, [filter]);
 
-  const filterFn = (row) => filter === 'all' || row.verdictInfo.variant === filter;
-  const counts = FILTERS.reduce((acc, f) => {
-    acc[f.key] = f.key === 'all' ? rows.length : rows.filter((r) => r.verdictInfo.variant === f.key).length;
-    return acc;
-  }, {});
+  const counts = useMemo(
+    () =>
+      FILTERS.reduce((acc, f) => {
+        acc[f.key] = f.key === 'all' ? rows.length : rows.filter((r) => r.verdictInfo.variant === f.key).length;
+        return acc;
+      }, {}),
+    [rows],
+  );
 
   return (
     <div className="space-y-4 p-6">
@@ -99,7 +109,7 @@ export default function LiveActivityPage() {
           </div>
 
           <DataTable
-            columns={columns}
+            columns={COLUMNS}
             rows={rows}
             searchQuery={query}
             searchKeys={['toolName', 'domainTab', 'caller']}
