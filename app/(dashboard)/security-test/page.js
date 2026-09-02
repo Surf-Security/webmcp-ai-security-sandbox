@@ -440,7 +440,22 @@ function BaselinePanel({ suite }) {
   );
 }
 
-function LiveContent({ suite, state, extensionInstalled, protectionEnabled, apiPresent, onRun }) {
+function ToolPrepHint({ extensionInstalled, protectionEnabled, apiPresent, registrationError, onRetry }) {
+  if (!extensionInstalled || !protectionEnabled || apiPresent) return null;
+  if (registrationError) {
+    return (
+      <p className="mt-2 text-xs text-bad">
+        {registrationError}{' '}
+        <button onClick={onRetry} className="font-semibold underline hover:no-underline">
+          Retry
+        </button>
+      </p>
+    );
+  }
+  return <p className="mt-2 text-xs text-mut">Preparing this test's tools — one moment…</p>;
+}
+
+function LiveContent({ suite, state, extensionInstalled, protectionEnabled, apiPresent, registrationError, onRetryRegistration, onRun }) {
   const hasRun = state.result !== undefined || !!state.error;
   const result = computeResult(suite, state);
   // apiPresent means this page's own tool registration actually finished — without it, a click
@@ -464,9 +479,13 @@ function LiveContent({ suite, state, extensionInstalled, protectionEnabled, apiP
         {extensionInstalled && !protectionEnabled && (
           <p className="mt-2 text-xs text-bad">Protection is off for this site — turn it on in the Surf popup.</p>
         )}
-        {extensionInstalled && protectionEnabled && !apiPresent && (
-          <p className="mt-2 text-xs text-mut">Preparing this test's tools — one moment…</p>
-        )}
+        <ToolPrepHint
+          extensionInstalled={extensionInstalled}
+          protectionEnabled={protectionEnabled}
+          apiPresent={apiPresent}
+          registrationError={registrationError}
+          onRetry={onRetryRegistration}
+        />
         {state.loading && suite.approvalRequired && <p className="mt-2 text-xs text-mut">Check the in-page approval prompt to continue.</p>}
         {suite.note && <p className="mt-3 text-xs text-mut">{suite.note}</p>}
       </>
@@ -533,7 +552,7 @@ function LiveContent({ suite, state, extensionInstalled, protectionEnabled, apiP
   );
 }
 
-function LivePanel({ suite, state, extensionInstalled, protectionEnabled, apiPresent, onRun }) {
+function LivePanel({ suite, state, extensionInstalled, protectionEnabled, apiPresent, registrationError, onRetryRegistration, onRun }) {
   const hasRun = state.result !== undefined || !!state.error;
   const result = hasRun ? computeResult(suite, state) : null;
 
@@ -569,7 +588,16 @@ function LivePanel({ suite, state, extensionInstalled, protectionEnabled, apiPre
 
   return (
     <PanelShell tone={tone} header="With Surf Protection" subtitle={subtitle} pill={pill}>
-      <LiveContent suite={suite} state={state} extensionInstalled={extensionInstalled} protectionEnabled={protectionEnabled} apiPresent={apiPresent} onRun={onRun} />
+      <LiveContent
+        suite={suite}
+        state={state}
+        extensionInstalled={extensionInstalled}
+        protectionEnabled={protectionEnabled}
+        apiPresent={apiPresent}
+        registrationError={registrationError}
+        onRetryRegistration={onRetryRegistration}
+        onRun={onRun}
+      />
     </PanelShell>
   );
 }
@@ -581,7 +609,7 @@ function LivePanel({ suite, state, extensionInstalled, protectionEnabled, apiPre
  * content/policy-bridge.ts) — this page has no channel to fabricate that decision itself, so a
  * pending step just says to check it there and waits on the same promise the extension resolves.
  */
-function RiskyActionLive({ state, extensionInstalled, protectionEnabled, apiPresent, onRun }) {
+function RiskyActionLive({ state, extensionInstalled, protectionEnabled, apiPresent, registrationError, onRetryRegistration, onRun }) {
   const steps = state.steps || [];
   const result = computeResult({ id: 'risky-action' }, state);
   const canRun = extensionInstalled && protectionEnabled && apiPresent;
@@ -651,9 +679,13 @@ function RiskyActionLive({ state, extensionInstalled, protectionEnabled, apiPres
           {extensionInstalled && !protectionEnabled && (
             <p className="mt-2 text-xs text-bad">Protection is off for this site — turn it on in the Surf popup.</p>
           )}
-          {extensionInstalled && protectionEnabled && !apiPresent && (
-            <p className="mt-2 text-xs text-mut">Preparing this test's tools — one moment…</p>
-          )}
+          <ToolPrepHint
+            extensionInstalled={extensionInstalled}
+            protectionEnabled={protectionEnabled}
+            apiPresent={apiPresent}
+            registrationError={registrationError}
+            onRetry={onRetryRegistration}
+          />
         </>
       ) : (
         <>
@@ -737,6 +769,11 @@ export default function SecurityTestPage() {
   const { status, protectionEnabled } = useExtensionConnection();
   const extensionInstalled = status === 'installed';
   const [apiPresent, setApiPresent] = useState(false);
+  // Set only if registration genuinely fails (times out waiting for WebMCP support, or a
+  // registerTool() call rejects for a real reason) — distinct from "still loading", so the UI can
+  // tell the two apart instead of showing the same generic message forever with no way out.
+  const [registrationError, setRegistrationError] = useState(null);
+  const [registrationAttempt, setRegistrationAttempt] = useState(0);
   const canRunProtected = extensionInstalled && protectionEnabled && apiPresent;
   const [callState, setCallState] = useState({}); // toolName -> { loading, result, error }
   const [selectedId, setSelectedId] = useState(null); // null = grid view
@@ -772,39 +809,59 @@ export default function SecurityTestPage() {
     // React hydration on a genuinely fresh load — a single synchronous check-and-bail here used
     // to silently register nothing at all if it lost that race, leaving the Run button armed
     // (its own disabled check never looked at apiPresent) against a tool that was never actually
-    // registered. Poll briefly instead, the same resilience pattern surfClient.js already uses
+    // registered. Poll for up to ~8s instead — long enough for a slow script load on a real
+    // network, not just a fast local one — the same resilience pattern surfClient.js already uses
     // for the extension ping.
     const getMc = () =>
       (typeof navigator !== 'undefined' && navigator.modelContext) ||
       (typeof document !== 'undefined' && document.modelContext);
 
+    setRegistrationError(null);
+
     (async () => {
       let mc = getMc();
-      for (let attempt = 0; !mc && attempt < 20 && !cancelled; attempt++) {
-        await new Promise((r) => setTimeout(r, 150));
+      for (let attempt = 0; !mc && attempt < 40 && !cancelled; attempt++) {
+        await new Promise((r) => setTimeout(r, 200));
         mc = getMc();
       }
-      if (!mc || cancelled) return;
+      if (cancelled) return;
+      if (!mc) {
+        setRegistrationError("WebMCP support wasn't detected in this browser after waiting — try Retry, or reload the page.");
+        return;
+      }
 
-      // Each registerTool() call is async and was previously fired without awaiting — under load
-      // (or a hot-reload re-running this effect) that let "tool not registered yet" races surface
-      // as a real, user-visible error on the very first call. Awaiting them, and tolerating
-      // "already registered" specifically (a harmless re-registration attempt), makes apiPresent
-      // an honest signal that every tool is actually callable by the time it flips true.
+      // Each registerTool() call is async — collect failures instead of throwing on the first one,
+      // so one bad/unexpected rejection can't silently strand the whole page in "Preparing..."
+      // forever with no visible reason (this is what left Danny's page stuck: a thrown error here
+      // used to become an unhandled rejection inside this un-awaited async block, and apiPresent
+      // just never flipped, with nothing in the UI explaining why). "Already registered" is
+      // tolerated — it's a harmless re-registration attempt, not a real failure.
+      const failures = [];
       for (const { name, description, inputSchema, annotations } of TOOLS) {
         try {
           await mc.registerTool({ name, description, inputSchema, annotations, execute: (input) => execByName[name](input) });
         } catch (err) {
-          if (!String(err?.message || err).includes('already registered')) throw err;
+          const message = String(err?.message || err);
+          if (!message.includes('already registered')) failures.push(`${name} (${message})`);
         }
       }
-      if (!cancelled) setApiPresent(true);
+      if (cancelled) return;
+      if (failures.length > 0) {
+        setRegistrationError(`Couldn't register: ${failures.join(', ')}. Try Retry, or reload the page.`);
+        return;
+      }
+      setApiPresent(true);
     })();
 
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [registrationAttempt]);
+
+  const retryRegistration = () => {
+    setApiPresent(false);
+    setRegistrationAttempt((n) => n + 1);
+  };
 
   const callTool = async (name) => {
     if (!canRunProtected) return; // button is disabled for this case too — belt and suspenders
@@ -940,7 +997,15 @@ export default function SecurityTestPage() {
           <div className="relative grid grid-cols-1 gap-4 sm:grid-cols-2">
             <BaselinePanel suite={suite} />
             {suite.id === 'risky-action' ? (
-              <RiskyActionLive state={state} extensionInstalled={extensionInstalled} protectionEnabled={protectionEnabled} apiPresent={apiPresent} onRun={runRiskyActionWorkflow} />
+              <RiskyActionLive
+                state={state}
+                extensionInstalled={extensionInstalled}
+                protectionEnabled={protectionEnabled}
+                apiPresent={apiPresent}
+                registrationError={registrationError}
+                onRetryRegistration={retryRegistration}
+                onRun={runRiskyActionWorkflow}
+              />
             ) : (
               <LivePanel
                 suite={suite}
@@ -948,6 +1013,8 @@ export default function SecurityTestPage() {
                 extensionInstalled={extensionInstalled}
                 protectionEnabled={protectionEnabled}
                 apiPresent={apiPresent}
+                registrationError={registrationError}
+                onRetryRegistration={retryRegistration}
                 onRun={() => callTool(suite.toolName)}
               />
             )}
@@ -961,8 +1028,13 @@ export default function SecurityTestPage() {
         </div>
 
         {!apiPresent && (
-          <div className="rounded-lg border border-line bg-card p-4 text-sm text-mut">
-            WebMCP polyfill not detected — reload the page to enable tool calls.
+          <div className={`rounded-lg border p-4 text-sm ${registrationError ? 'border-bad bg-bad-bg text-bad' : 'border-line bg-card text-mut'}`}>
+            {registrationError || "Preparing this test's tools — one moment…"}
+            {registrationError && (
+              <button onClick={retryRegistration} className="ml-2 font-semibold underline hover:no-underline">
+                Retry
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -983,8 +1055,13 @@ export default function SecurityTestPage() {
       </div>
 
       {!apiPresent && (
-        <div className="rounded-lg border border-line bg-card p-4 text-sm text-mut">
-          WebMCP polyfill not detected — reload the page to enable tool calls.
+        <div className={`rounded-lg border p-4 text-sm ${registrationError ? 'border-bad bg-bad-bg text-bad' : 'border-line bg-card text-mut'}`}>
+          {registrationError || "Preparing this test's tools — one moment…"}
+          {registrationError && (
+            <button onClick={retryRegistration} className="ml-2 font-semibold underline hover:no-underline">
+              Retry
+            </button>
+          )}
         </div>
       )}
 
