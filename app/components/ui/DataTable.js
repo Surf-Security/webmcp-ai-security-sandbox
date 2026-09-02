@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronUp, ChevronDown } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -18,6 +18,8 @@ export default function DataTable({
   pageSize = 10,
   initialSort = null,
   pagination = 'numbered', // 'numbered' | 'loadMore' | 'none'
+  onVisibleRowsChange, // (filtered+sorted rows, pre-pagination) — lets a parent (e.g. an export
+  // button) act on exactly what's currently on screen instead of the full unfiltered `rows`.
 }) {
   const [sort, setSort] = useState(initialSort);
   const [page, setPage] = useState(0);
@@ -31,22 +33,45 @@ export default function DataTable({
       r = r.filter((row) => searchKeys.some((k) => String(row[k] ?? '').toLowerCase().includes(q)));
     }
     return r;
+    // Callers MUST memoize filterFn (e.g. useCallback keyed on their actual filter state) — an
+    // inline arrow function recreated every render would defeat this memo and also falsely
+    // trigger the pagination-reset effects below on every unrelated re-render.
   }, [rows, filterFn, searchQuery, searchKeys]);
+
+  const sortValueFor = (col, row) => (col.sortValue ? col.sortValue(row) : row[col.key]);
 
   const sorted = useMemo(() => {
     if (!sort) return filtered;
-    const { key, dir } = sort;
+    const col = columns.find((c) => c.key === sort.key);
     return [...filtered].sort((a, b) => {
-      const av = a[key];
-      const bv = b[key];
+      const av = sortValueFor(col, a);
+      const bv = sortValueFor(col, b);
       if (av === bv) return 0;
       const cmp = av > bv ? 1 : -1;
-      return dir === 'asc' ? cmp : -cmp;
+      return sort.dir === 'asc' ? cmp : -cmp;
     });
-  }, [filtered, sort]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtered, sort, columns]);
 
   useEffect(() => setPage(0), [searchQuery, filterFn]);
   useEffect(() => setRevealCount(pageSize), [searchQuery, filterFn]);
+
+  // Belt-and-suspenders against an unstable `rows`/`filterFn`/`searchKeys` reference from a
+  // caller (an inline array/object literal recreated every render, say): comparing shallowly
+  // before calling onVisibleRowsChange means even a same-content-but-new-reference `sorted` won't
+  // trigger the parent's setState — a real instance of this fed back into an infinite render loop
+  // (Audit Trail passed a fresh `searchKeys` array literal every render, which fed this effect,
+  // which called setState, which re-rendered the page, which built a new array — forever), which
+  // is bad enough on its own to guard against here rather than trust every future caller to memoize.
+  const lastEmittedRef = useRef(null);
+  useEffect(() => {
+    if (!onVisibleRowsChange) return;
+    const prev = lastEmittedRef.current;
+    const same = prev && prev.length === sorted.length && prev.every((r, i) => r === sorted[i]);
+    if (same) return;
+    lastEmittedRef.current = sorted;
+    onVisibleRowsChange(sorted);
+  }, [sorted, onVisibleRowsChange]);
 
   const toggleSort = (key) => {
     setSort((prev) => {

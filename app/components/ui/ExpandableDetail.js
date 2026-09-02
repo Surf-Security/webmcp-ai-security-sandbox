@@ -7,7 +7,9 @@ const CLAMP_CHAR_THRESHOLD = 140;
  * so this clamps to 2 lines with a click-to-expand toggle instead of blowing out row height. */
 export default function ExpandableDetail({ value, className = 'text-xs text-mut' }) {
   const [expanded, setExpanded] = useState(false);
-  const text = typeof value === 'string' ? value : JSON.stringify(value);
+  // JSON.stringify(undefined) returns the value undefined, not a string — guard it explicitly so
+  // a detail-less entry renders as an empty cell instead of throwing on text.length below.
+  const text = typeof value === 'string' ? value : value === undefined ? '' : JSON.stringify(value);
 
   return (
     <div className={className}>

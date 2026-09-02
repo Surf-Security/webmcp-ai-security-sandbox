@@ -13,6 +13,18 @@ export const VARIANT_CLASSES = {
   neutral: 'bg-line text-mut',
 };
 
+// Text-only half of VARIANT_CLASSES, for callers (e.g. the "What results show" legend) that need
+// just the verdict color on its own — an explicit map instead of splitting VARIANT_CLASSES'
+// strings apart, which would silently break if a bg-*/text-* pair were ever reordered or a class
+// were added to one entry but not the others.
+export const TEXT_CLASSES = {
+  allowed: 'text-ok',
+  held: 'text-hold',
+  blocked: 'text-bad',
+  masked: 'text-masked',
+  neutral: 'text-mut',
+};
+
 export default function Badge({ variant = 'neutral', children, className }) {
   return (
     <span

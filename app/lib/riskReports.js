@@ -6,41 +6,76 @@
  * populated. Being localStorage-backed (not a database) is an honest limitation worth stating
  * plainly wherever reports are shown: they live in this browser only.
  */
+import { safeGetJSON, safeSetJSON } from './safeStorage';
+
 const STORAGE_KEY = 'surf-risk-reports';
 const MAX_REPORTS = 50;
 
 function readAll() {
   if (typeof window === 'undefined') return [];
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+  const parsed = safeGetJSON(STORAGE_KEY, []);
+  return Array.isArray(parsed) ? parsed : [];
 }
 
 function writeAll(reports) {
-  try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(reports.slice(0, MAX_REPORTS)));
-  } catch {
-    // best-effort only — a full/blocked localStorage just means this report isn't persisted
-  }
+  safeSetJSON(STORAGE_KEY, reports.slice(0, MAX_REPORTS));
 }
 
 export function listRiskReports() {
   return readAll().sort((a, b) => b.createdAt - a.createdAt);
 }
 
-/** report: { suiteId, title, verdictLabel, verdictVariant, summary, stats: [{label, value}] } */
+function nextReportId(createdAt) {
+  const d = new Date(createdAt);
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  const suffix = crypto.randomUUID().slice(0, 6).toUpperCase();
+  return `RPT-${yyyy}${mm}${dd}-${suffix}`;
+}
+
+/**
+ * report: { suiteId, title, agentTask, caller, origin, verdictLabel, verdictVariant, summary,
+ * stats: [{label, value}], events: [{step, tool, toolType, riskLevel, surfAction, userDecision,
+ * executed, inputSummary, resultSummary, sensitiveValuesMasked, ts}] } — events is the real,
+ * per-tool-call breakdown that both the report view and the CSV/PDF exports render from.
+ */
 export function saveRiskReport(report) {
-  const entry = { id: crypto.randomUUID(), createdAt: Date.now(), ...report };
+  const createdAt = Date.now();
+  const entry = { id: crypto.randomUUID(), reportId: nextReportId(createdAt), createdAt, ...report };
   writeAll([entry, ...readAll()]);
   return entry;
 }
 
 export function deleteRiskReport(id) {
   writeAll(readAll().filter((r) => r.id !== id));
+}
+
+/**
+ * Reports saved before the per-event schema existed have no `events` array at all — combining
+ * them shouldn't just silently drop them from the table. Falls back to one row built from that
+ * report's own already-stored summary fields (real data it genuinely has), rather than either
+ * fabricating fake step detail or making the report vanish from the combined view entirely.
+ */
+function eventsForReport(r) {
+  if (r.events && r.events.length > 0) return r.events;
+  return [
+    {
+      step: 1,
+      tool: r.suiteId,
+      toolType: '—',
+      riskLevel: '—',
+      surfAction: '—',
+      userDecision: '—',
+      executed: '—',
+      inputSummary: '—',
+      // Explains the dashes above rather than leaving them unexplained — this row exists because
+      // an older report predates per-step tracking, not because nothing happened.
+      resultSummary: `${r.summary || r.verdictLabel || 'No summary recorded'} (saved before per-step detail was tracked — re-run and regenerate "${r.title}" for full detail)`,
+      sensitiveValuesMasked: 0,
+      ts: r.createdAt,
+    },
+  ];
 }
 
 /**
@@ -57,9 +92,14 @@ export function generateCombinedReport() {
   return saveRiskReport({
     suiteId: 'combined',
     title: 'Combined Security Report',
+    caller: 'Security Test',
+    origin: included[0]?.origin || '',
     verdictLabel: `${included.length} TEST${included.length === 1 ? '' : 'S'}`,
     verdictVariant: 'neutral',
     summary: `Combines the latest result from ${included.length} test${included.length === 1 ? '' : 's'}: ${included.map((r) => r.title).join(', ')}.`,
     stats: included.map((r) => ({ label: r.title, value: r.verdictLabel })),
+    // Each source report's own events, real numbering re-sequenced across the whole combined set
+    // (rather than restarting at 1 per suite) so the exported CSV reads as one continuous log.
+    events: included.flatMap((r) => eventsForReport(r)).map((e, i) => ({ ...e, step: i + 1 })),
   });
 }
