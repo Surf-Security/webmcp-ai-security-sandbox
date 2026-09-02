@@ -1091,10 +1091,10 @@ export default function SecurityTestPage() {
                 <div className={`text-xs font-bold uppercase tracking-wide ${style.title}`}>{s.title}</div>
               </div>
               <p className="mt-3 text-sm text-mut">{s.tagline}</p>
-              <div className="mt-3">
+              <div className="mt-3 mb-3">
                 <Badge variant={style.variant}>Test: {s.testLabel}</Badge>
               </div>
-              <div className="mt-4 flex items-center justify-between border-t border-line pt-3">
+              <div className="mt-auto flex items-center justify-between border-t border-line pt-3">
                 <div>
                   <div className="text-[10px] font-medium uppercase tracking-wide text-mut">{s.toolNames ? 'Example tools' : 'Example tool'}</div>
                   <div className="font-mono text-sm font-semibold text-ink">{(s.toolNames || [s.toolName]).join(', ')}</div>
