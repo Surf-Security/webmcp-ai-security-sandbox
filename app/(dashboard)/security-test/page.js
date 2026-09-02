@@ -1084,22 +1084,22 @@ export default function SecurityTestPage() {
               onClick={() => setSelectedId(s.id)}
               className={`flex flex-col rounded-xl border bg-card p-5 text-left transition-colors ${style.border}`}
             >
-              <div className="flex items-start justify-between">
-                <div className={`flex h-12 w-12 items-center justify-center rounded-full ${style.iconWrap}`}>
+              <div className="flex items-center gap-3">
+                <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full ${style.iconWrap}`}>
                   <Icon size={22} />
                 </div>
-                <ArrowRight size={18} className="mt-1 text-mut" />
-              </div>
-              <div className="mt-4">
                 <div className={`text-xs font-bold uppercase tracking-wide ${style.title}`}>{s.title}</div>
-                <p className="mt-1 text-sm text-mut">{s.tagline}</p>
               </div>
+              <p className="mt-3 text-sm text-mut">{s.tagline}</p>
               <div className="mt-3">
                 <Badge variant={style.variant}>Test: {s.testLabel}</Badge>
               </div>
-              <div className="mt-4 border-t border-line pt-3">
-                <div className="text-[10px] font-medium uppercase tracking-wide text-mut">{s.toolNames ? 'Example tools' : 'Example tool'}</div>
-                <div className="font-mono text-sm font-semibold text-ink">{(s.toolNames || [s.toolName]).join(', ')}</div>
+              <div className="mt-4 flex items-center justify-between border-t border-line pt-3">
+                <div>
+                  <div className="text-[10px] font-medium uppercase tracking-wide text-mut">{s.toolNames ? 'Example tools' : 'Example tool'}</div>
+                  <div className="font-mono text-sm font-semibold text-ink">{(s.toolNames || [s.toolName]).join(', ')}</div>
+                </div>
+                <ArrowRight size={16} className="text-mut" />
               </div>
             </button>
           );
