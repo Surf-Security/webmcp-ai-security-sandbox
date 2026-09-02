@@ -834,15 +834,19 @@ export default function SecurityTestPage() {
       // so one bad/unexpected rejection can't silently strand the whole page in "Preparing..."
       // forever with no visible reason (this is what left Danny's page stuck: a thrown error here
       // used to become an unhandled rejection inside this un-awaited async block, and apiPresent
-      // just never flipped, with nothing in the UI explaining why). "Already registered" is
-      // tolerated — it's a harmless re-registration attempt, not a real failure.
+      // just never flipped, with nothing in the UI explaining why). A harmless re-registration
+      // attempt (StrictMode's dev double-invoke, or this effect re-running on Retry) is tolerated,
+      // not a real failure — but the exact wording isn't ours to control: our own polyfill throws
+      // "Tool \"X\" is already registered" while a browser's native modelContext can throw
+      // something else entirely (observed: "Duplicate tool name"), so match loosely on either
+      // "already"/"duplicate" rather than one hardcoded phrase.
       const failures = [];
       for (const { name, description, inputSchema, annotations } of TOOLS) {
         try {
           await mc.registerTool({ name, description, inputSchema, annotations, execute: (input) => execByName[name](input) });
         } catch (err) {
           const message = String(err?.message || err);
-          if (!message.includes('already registered')) failures.push(`${name} (${message})`);
+          if (!/already|duplicate/i.test(message)) failures.push(`${name} (${message})`);
         }
       }
       if (cancelled) return;
